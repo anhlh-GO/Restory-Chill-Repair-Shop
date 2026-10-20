@@ -18,6 +18,8 @@ export interface CounterHost {
   addMoney(n: number): void;
   cashPulse(): number;
   openSettings(): void;
+  /** The shelf of repaired gadgets. */
+  openCollection(): void;
   /** arrive: box handed over; leave: customer paid and left. */
   onDone(): void;
   showDay: boolean;
@@ -187,7 +189,33 @@ export class Counter {
   }
   coins: { x: number; y: number }[] = [];
 
+  /** A little wooden sign on the wall that opens the collection. */
+  shelfSign() {
+    const { W, U, wallH } = this.layout;
+    return { x: W * 0.48, y: wallH - 30 * U, w: 112 * U, h: 30 * U };
+  }
+
+  drawShelfSign(c: C): void {
+    const { U } = this.layout;
+    const r = this.shelfSign();
+    const sway = Math.sin(this.time * 1.6) * 0.03;
+    c.save();
+    c.translate(r.x, r.y - r.h / 2 - 8 * U);
+    c.rotate(sway);
+    c.strokeStyle = '#2a1b15'; c.lineWidth = 1.5 * U;
+    c.beginPath(); c.moveTo(-r.w * 0.3, r.h / 2 + 8 * U); c.lineTo(0, 0); c.lineTo(r.w * 0.3, r.h / 2 + 8 * U); c.stroke();
+    c.fillStyle = '#c9a46a'; c.beginPath(); c.arc(0, 0, 2.5 * U, 0, Math.PI * 2); c.fill();
+    c.translate(0, r.h / 2 + 8 * U);
+    c.fillStyle = 'rgba(0,0,0,0.3)'; c.beginPath(); rrc(c, 2, 3, r.w, r.h, 7 * U); c.fill();
+    c.fillStyle = '#b98552'; c.beginPath(); rrc(c, 0, 0, r.w, r.h, 7 * U); c.fill();
+    c.strokeStyle = '#6e4630'; c.lineWidth = 2 * U; c.beginPath(); rrc(c, 0, 0, r.w - 4 * U, r.h - 4 * U, 6 * U); c.stroke();
+    text(c, t('collectionBtn'), 0, 1, 13.5 * U, '#3b2414', { font: 'bold' });
+    c.restore();
+  }
+
   down(x: number, y: number): void {
+    const sign = this.shelfSign();
+    if (Math.abs(x - sign.x) < sign.w / 2 + 6 && Math.abs(y - sign.y) < sign.h / 2 + 10) { this.host.openCollection(); return; }
     if (this.busy) return;
     const line = this.lines[this.li];
     if (!line) return;
@@ -266,6 +294,7 @@ export class Counter {
     c.fillStyle = '#7dff8a';
     c.textAlign = 'center'; c.textBaseline = 'middle';
     c.fillText(`${hh}${Math.floor(this.time * 2) % 2 ? ':' : ' '}${mm}`, kx, ky + 1);
+    this.drawShelfSign(c);
 
     // the customer
     if (this.custX > -1.15) {

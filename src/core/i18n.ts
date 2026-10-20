@@ -77,6 +77,25 @@ const UI = {
   vibration: { en: 'Vibration', vi: 'Rung' },
   day: { en: 'Day', vi: 'Ngày' },
   nextCustomer: { en: 'Next customer…', vi: 'Khách tiếp theo…' },
+  // level / day results
+  fixedIt: { en: 'Fixed it!', vi: 'Sửa xong rồi!' },
+  nextCustomerBtn: { en: 'Next customer ▶', vi: 'Khách tiếp theo ▶' },
+  nextDayBtn: { en: 'Next day ☀', vi: 'Sang ngày mới ☀' },
+  dayOver: { en: 'Day {0} is over', vi: 'Hết ngày {0}' },
+  todayFixed: { en: 'Fixed today', vi: 'Đã sửa hôm nay' },
+  todayEarned: { en: 'Earned today', vi: 'Thu nhập hôm nay' },
+  earned: { en: 'Earned', vi: 'Tiền công' },
+  allDone: { en: 'All 20 gadgets repaired!', vi: 'Đã sửa đủ 20 món đồ!' },
+  allDoneSub: { en: 'The whole street sings your name.', vi: 'Cả khu phố đều nhắc tên tiệm bạn.' },
+  playAgain: { en: 'Play again ↻', vi: 'Chơi lại từ đầu ↻' },
+  // collection
+  collection: { en: 'Collection', vi: 'Kho sưu tập' },
+  collectionBtn: { en: '📦 Collection', vi: '📦 Kho sưu tập' },
+  collected: { en: '{0}/{1} repaired', vi: 'Đã sửa {0}/{1}' },
+  notYet: { en: 'Not repaired yet', vi: 'Chưa sửa' },
+  ownerOf: { en: 'Owner: {0}', vi: 'Chủ: {0}' },
+  dayN: { en: 'Day {0}', vi: 'Ngày {0}' },
+  dragToSpin: { en: 'Drag to spin', vi: 'Kéo để xoay' },
 } satisfies Record<string, Txt>;
 
 export type UIKey = keyof typeof UI;

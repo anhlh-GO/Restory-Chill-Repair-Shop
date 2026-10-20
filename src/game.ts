@@ -19,6 +19,8 @@ import type { DeviceDef } from './content/device';
 import { Counter } from './scenes/counter';
 import { Bench } from './scenes/bench';
 import { Settings } from './scenes/settings';
+import { Collection, markRepaired, loadCollection } from './scenes/collection';
+import { Results, type ResultKind } from './scenes/results';
 
 export const LEVEL_COUNT = LEVELS.length;
 
@@ -48,6 +50,17 @@ function levelAt(i: number): Level {
 
 const events = createFalconEvents();
 
+// Who listens for 'win'? registerFalconGame's analytics always does. When the studio layer
+// is wired (a Falcon publish build) it listens too and runs its own win popup + next level;
+// otherwise (dev, the web build, the APK) the game runs that flow itself.
+let winListeners = 0;
+const on: FalconGame['on'] = (event, fn) => {
+  if (event === 'win') winListeners++;
+  const off = events.on(event, fn);
+  return () => { if (event === 'win') winListeners--; off(); };
+};
+const studioRunsFlow = () => winListeners > 1;
+
 // ---------- persistent cash ----------
 
 const CASH_KEY = 'chillfix_cash';
@@ -70,18 +83,43 @@ let pan = { k: 0, active: false, dir: 1 };
 let playing = false;
 let paused = false;
 let won = false;
+/** Money the current customer paid (repair + tip), for the result card and the collection. */
+let levelEarned = 0;
 
 const settings = new Settings(
   () => startLevel(level),
   () => { /* nothing */ },
 );
 
+const collection = new Collection(LEVELS);
+
+const results = new Results({
+  onContinue: () => {
+    results.hide();
+    startLevel(results.kind === 'end' ? 0 : level + 1);
+  },
+  onCollection: () => collection.show(level),
+});
+
+function showResults(): void {
+  const L = LEVELS[level];
+  const last = level === LEVEL_COUNT - 1;
+  const dayEnds = last || LEVELS[level + 1].day !== L.day;
+  const kind: ResultKind = last ? 'end' : dayEnds ? 'day' : 'next';
+  const done = loadCollection();
+  const today = LEVELS.map((x, i) => ({ L: x, i }))
+    .filter(({ L: x, i }) => x.day === L.day && i <= level && done[i])
+    .map(({ L: x, i }) => ({ L: x, earned: done[i].earned }));
+  results.show(L, levelEarned, kind, today);
+}
+
 function counterHost(mode: 'arrive' | 'leave') {
   return {
     money: () => cash,
-    addMoney: (n: number) => { cash += n; saveCash(); pulse.v = 1; },
+    addMoney: (n: number) => { cash += n; levelEarned += n; saveCash(); pulse.v = 1; },
     cashPulse: () => pulse.v,
     openSettings: () => settings.show(),
+    openCollection: () => collection.show(),
     showDay: mode === 'arrive' && (level === 0 || LEVELS[level - 1].day !== LEVELS[level].day),
     onDone: () => (mode === 'arrive' ? goBench() : finishLevel()),
   };
@@ -123,9 +161,10 @@ function finishLevel(): void {
   won = true;
   playing = false;
   scene = 'idle';
+  markRepaired(level, levelEarned);
   events.emit('win');
-  // In development nothing drives "next level": move on by ourselves.
-  if (import.meta.env.DEV) setTimeout(() => startLevel((level + 1) % LEVEL_COUNT), 1200);
+  // without a studio layer nobody else moves the game on: show our own card
+  if (!studioRunsFlow()) showResults();
 }
 
 function startLevel(index: number): void {
@@ -134,6 +173,9 @@ function startLevel(index: number): void {
   clearFx();
   settings.shown = false;
   settings.open = 0;
+  results.hide();
+  collection.shown = false;
+  levelEarned = 0;
   bench?.dispose();
   bench = null;
   pan = { k: 0, active: false, dir: 1 };
@@ -160,6 +202,8 @@ function frame(now: number): void {
     pulse.v = Math.max(0, pulse.v - dt * 3);
   }
   settings.update(dt);
+  results.update(dt);
+  collection.update(dt);
   render();
   requestAnimationFrame(frame);
 }
@@ -179,7 +223,9 @@ function render(): void {
   else drawIdle();
   drawFx(ctx);
   drawToasts(ctx);
+  results.draw(ctx);
   settings.draw(ctx);
+  collection.draw(ctx);
 }
 
 function drawIdle(): void {
@@ -203,21 +249,27 @@ canvas.addEventListener('pointerdown', (e) => {
   activePointer = e.pointerId;
   canvas.setPointerCapture?.(e.pointerId);
   const [x, y] = pos(e);
+  if (collection.down(x, y)) return;
   if (settings.down(x, y)) return;
+  if (results.down(x, y)) return;
   if (!playing || paused || pan.active) return;
   if (scene === 'bench') bench?.down(x, y);
   else counter?.down(x, y);
 });
 canvas.addEventListener('pointermove', (e) => {
-  if (e.pointerId !== activePointer || paused || pan.active) return;
+  if (e.pointerId !== activePointer) return;
   const [x, y] = pos(e);
+  if (collection.move(x, y)) return;
+  if (paused || pan.active) return;
   if (scene === 'bench') bench?.move(x, y);
 });
 const end = (e: PointerEvent) => {
   if (e.pointerId !== activePointer) return;
   activePointer = -1;
-  if (paused) return;
   const [x, y] = pos(e);
+  if (collection.up()) return;
+  if (results.up(x, y)) return;
+  if (paused) return;
   if (scene === 'bench') bench?.up(x, y);
 };
 canvas.addEventListener('pointerup', end);
@@ -229,6 +281,8 @@ if (import.meta.env.DEV) {
     get bench() { return bench; },
     get counter() { return counter; },
     get scene() { return scene; },
+    get results() { return results; },
+    get collection() { return collection; },
     get pan() { return pan.active; },
     setCash: (n: number) => { cash = n; },
   };
@@ -245,7 +299,7 @@ void document.fonts?.load('800 20px "Baloo 2"');
 export const game: FalconGame = {
   getLevelCount: () => LEVEL_COUNT,
   startLevel,
-  on: events.on,
+  on,
   pause: () => { paused = true; pauseAudio(true); },
   resume: () => { paused = false; pauseAudio(false); last = performance.now(); },
   getProgress: () => {

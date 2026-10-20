@@ -1,0 +1,98 @@
+# Every push to main: build the single-file web game, publish it to GitHub Pages,
+# and wrap it into an Android APK (Capacitor WebView) attached to the "latest" release.
+
+name: Build web & APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: dist/index.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  pages:
+    # needs Settings → Pages → Source: "GitHub Actions" (one-time switch in the repo)
+    needs: web
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - run: npm ci
+      - run: npm run build
+      - name: Capacitor Android project
+        run: |
+          npm install --no-save @capacitor/core@6.2.1 @capacitor/cli@6.2.1 @capacitor/android@6.2.1
+          npx cap add android
+          # portrait phone game
+          sed -i 's/<activity /<activity android:screenOrientation="portrait" /' android/app/src/main/AndroidManifest.xml
+          npx cap sync android
+      - name: Gradle build
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+      - name: Collect APK
+        run: |
+          mkdir -p out
+          cp android/app/build/outputs/apk/debug/app-debug.apk out/Restory-Chill-Repair-Shop.apk
+          cp dist/index.html out/Restory-Chill-Repair-Shop.html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: out/Restory-Chill-Repair-Shop.apk
+      - name: Publish to the "latest" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest build
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          body: |
+            Automatic build of `${{ github.sha }}`.
+            - **Restory-Chill-Repair-Shop.apk**: Android (debug-signed, install directly)
+            - **Restory-Chill-Repair-Shop.html**: the whole web game in one file
+          files: |
+            out/Restory-Chill-Repair-Shop.apk
+            out/Restory-Chill-Repair-Shop.html

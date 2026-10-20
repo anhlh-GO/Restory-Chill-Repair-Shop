@@ -1,0 +1,8 @@
+{
+  "appId": "com.anhlhgo.restory",
+  "appName": "Restory: Chill Repair Shop",
+  "webDir": "dist",
+  "android": {
+    "backgroundColor": "#1b2236"
+  }
+}

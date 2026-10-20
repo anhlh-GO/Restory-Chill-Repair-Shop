@@ -38,6 +38,10 @@ export interface RT {
   seen: boolean;
   wig: number;
   pop: number;
+  /** Where the player put it on the mat (null = its tray slot). */
+  spot: { x: number; y: number; rot: number } | null;
+  /** Stacking order on the mat: higher lies on top. */
+  tz: number;
 }
 
 export interface BenchHost {
@@ -53,6 +57,8 @@ interface Drag {
   kind: DragKind;
   /** Tap on a part that cannot come off yet: complain only if the finger did not turn the gadget. */
   blocked?: () => void;
+  /** Tap on a tray part: its job (repair / clean / hint) when the finger never moved. */
+  tap?: () => void;
   rt?: RT;
   sx: number; sy: number; // pointer start
   ox: number; oy: number; // grab offset
@@ -97,6 +103,8 @@ export class Bench {
   lastTap = { t: -1, x: 0, y: 0 };
   flying: { x: number; y: number; sc: number; a: number }[] = [];
   packed = false;
+  /** Last stacking order handed out on the mat. */
+  topZ = 0;
   shake = 0;
 
   /** Repair jobs by part id: the main fault plus the level's extra hands-on tasks. */
@@ -111,7 +119,7 @@ export class Bench {
     this.parts = level.device.parts.map((def) => {
       const rt: RT = {
         def, state: 'in', anim: false, x: 0, y: 0, sc: 1, rot: 0, lift: 0, alpha: 1, flipX: 1,
-        slot: -1, dirt: null, dirtVer: 0, side: 0, broken: this.jobs.has(def.id), fixed: false, seen: false, wig: 0, pop: 0,
+        slot: -1, dirt: null, dirtVer: 0, side: 0, broken: this.jobs.has(def.id), fixed: false, seen: false, wig: 0, pop: 0, spot: null, tz: 0,
       };
       if (level.dirty.includes(def.id)) rt.dirt = [makeDirt(def, r), makeDirt(def, r)];
       return rt;
@@ -153,7 +161,17 @@ export class Bench {
   }
   traySc(rt: RT): number {
     const s = this.slotPos(0);
-    return Math.min((s.w * 1.12) / rt.def.w, (s.h * 1.3) / rt.def.h, this.k * 0.72);
+    return Math.min((s.w * 0.98) / rt.def.w, (s.h * 1.06) / rt.def.h, this.k * 0.62);
+  }
+  /** Where a removed part lies now: its own spot if the player moved it, else its slot. */
+  trayPos(rt: RT): { x: number; y: number; w: number; h: number; rot: number } {
+    const s = this.slotPos(rt.slot);
+    return rt.spot ? { ...s, x: rt.spot.x, y: rt.spot.y, rot: rt.spot.rot } : s;
+  }
+  /** Keep a dropped part on the mat, below the HUD and clear of the screen edges. */
+  clampSpot(x: number, y: number): { x: number; y: number } {
+    const { W, H, U } = view;
+    return { x: clamp(x, 34 * U, W - 34 * U), y: clamp(y, view.top + 150 * U, H - 40 * U) };
   }
   dishPos() { const { H, U } = view; return { x: 44 * U, y: H - 58 * U, r: 30 * U }; }
   driverRest() { const { W, H, U } = view; return { x: W - 196 * U, y: H - 64 * U, ang: 0.3 }; }
@@ -205,7 +223,17 @@ export class Bench {
 
   g3!: Bench3D;
 
+  lastPhase: Phase = 'box';
+
   update(dt: number): void {
+    if (this.phase !== this.lastPhase) {
+      this.lastPhase = this.phase;
+      // the parts that need work come to the top of the pile, never buried
+      for (const p of this.parts) {
+        if (p.state !== 'out') continue;
+        if ((this.phase === 'repair' && p.broken && !p.fixed) || (this.phase === 'clean' && p.dirt)) { p.tz = ++this.topZ; p.wig = 1; }
+      }
+    }
     for (const p of this.parts) if (p.state === 'in' && !p.seen && this.visibleOnSide(p) && this.blockers(p).length === 0) p.seen = true;
     this.time += dt;
     this.idle += dt;
@@ -240,6 +268,7 @@ export class Bench {
       this.toolPos.y += (r.y - this.toolPos.y) * Math.min(1, dt * 12);
     }
     this.toolPos.scrub = Math.max(0, this.toolPos.scrub - dt * 2);
+    for (const f of this.flying) if (Math.random() < dt * 30) emit('spark', f.x, f.y, 1, { color: ['#ffffff', '#e8d8f0'], speed: 20, size: 3, life: 0.3 });
     if (this.driver.rest && !this.driver.busy) {
       const r = this.driverRest();
       this.driver.x += (r.x - this.driver.x) * Math.min(1, dt * 12);
@@ -451,7 +480,7 @@ export class Bench {
   }
 
   trayOverlays(c: C, p: RT): void {
-    const s = this.slotPos(p.slot);
+    const s = this.trayPos(p);
     const sc = this.traySc(p);
     const bx = s.x + Math.min(p.def.w * sc * 0.5, s.w * 0.4), by = s.y - Math.min(p.def.h * sc * 0.5, s.h * 0.42) - 8 * view.U;
     if (p.broken && !p.fixed && this.phase !== 'apart') badge(c, bx, by, view.U, 'broken', this.time, this.jobGlyph(p));
@@ -681,7 +710,7 @@ export class Bench {
   }
 
   drawPartTray(c: C, p: RT): void {
-    const s = this.slotPos(p.slot);
+    const s = this.trayPos(p);
     const sc = this.traySc(p);
     c.save();
     c.translate(s.x, s.y);
@@ -849,16 +878,16 @@ export class Bench {
     }
     if (this.phase === 'repair') {
       const b = this.parts.find((p) => p.broken && !p.fixed);
-      if (b) { const s = this.slotPos(b.slot); return { tap: { x: s.x, y: s.y }, msg: t('tapBroken') }; }
+      if (b) { const s = this.trayPos(b); return { tap: { x: s.x, y: s.y }, msg: t('tapBroken') }; }
     }
     if (this.phase === 'clean') {
       const b = this.parts.find((p) => p.dirt && p.state === 'out');
-      if (b) { const s = this.slotPos(b.slot); return { tap: { x: s.x, y: s.y }, msg: t('tapDirty') }; }
+      if (b) { const s = this.trayPos(b); return { tap: { x: s.x, y: s.y }, msg: t('tapDirty') }; }
     }
     if (this.phase === 'rebuild') {
       const fit = this.parts.filter((p) => this.canFit(p));
       const part = fit.find((p) => p.def.kind !== 'screw');
-      if (part) { const s = this.slotPos(part.slot); return { from: { x: s.x, y: s.y }, to: this.home(part), msg: t('dragBack') }; }
+      if (part) { const s = this.trayPos(part); return { from: { x: s.x, y: s.y }, to: this.home(part), msg: t('dragBack') }; }
       const sc = fit.find((p) => p.def.kind === 'screw' && this.visibleOnSide(p));
       const d = this.driverRest();
       if (sc) return { from: { x: d.x, y: d.y }, to: this.home(sc), msg: t('dragScrewdriver') };
@@ -933,11 +962,16 @@ export class Bench {
   }
 
   hitTray(x: number, y: number): RT | null {
-    // topmost (latest slot) first: the pile overlaps
-    for (const p of [...this.parts].sort((a, b) => b.slot - a.slot)) {
-      if (p.state !== 'out' || p.def.kind === 'screw' || p.anim) continue;
-      const s = this.slotPos(p.slot);
-      if (Math.abs(x - s.x) < s.w * 0.5 && Math.abs(y - s.y) < s.h * 0.55) return p;
+    const cands = this.parts.filter((p) => p.state === 'out' && p.def.kind !== 'screw' && !p.anim && p !== this.focus);
+    // the actual model under the finger, nearest to the camera = the one on top
+    const hit = this.g3.ok ? this.g3.pickTray(x, y, cands) : null;
+    if (hit) return hit;
+    // through a hole (a bezel, a ring) or without WebGL: the part's footprint, topmost first
+    for (const p of cands.sort((a, b) => b.tz - a.tz)) {
+      const s = this.trayPos(p);
+      const sc = this.traySc(p);
+      const hw = Math.max(18 * view.U, p.def.w * sc * 0.5), hh = Math.max(18 * view.U, p.def.h * sc * 0.5);
+      if (Math.abs(x - s.x) < hw && Math.abs(y - s.y) < hh) return p;
     }
     return null;
   }
@@ -1039,6 +1073,7 @@ export class Bench {
       this.drag.from = 'device';
       this.drag.ox = h.x - x; this.drag.oy = h.y - y;
       hit.anim = true;
+      emit('ring', h.x, h.y, 1, { color: 'rgba(255,255,255,0.75)', size: 34 * U, life: 0.3, speed: 0 });
       hit.x = h.x; hit.y = h.y; hit.sc = this.k; hit.rot = -this.heading; hit.flipX = this.g3.ok ? 1 : this.flipK; hit.alpha = 1;
       tween(hit, { lift: 1 }, 0.15);
       sfx.lift();
@@ -1049,34 +1084,27 @@ export class Bench {
     // tray part
     const tp = this.hitTray(x, y);
     if (tp) {
-      if (this.phase === 'apart') {
-        if (tp.broken || tp.dirt) toast(t('takeAllApart'), W / 2, view.H * 0.64, 14 * U);
-        tp.wig = 1;
-        return;
-      }
-      if (this.phase === 'repair') {
-        if (tp.broken && !tp.fixed) this.openRepair(tp);
-        else { tp.wig = 1; toast(t('tapBroken'), W / 2, view.H * 0.64, 14 * U); }
-        return;
-      }
-      if (this.phase === 'clean') {
-        if (tp.dirt) this.openClean(tp);
-        else { tp.wig = 1; toast(t('tapDirty'), W / 2, view.H * 0.64, 14 * U); }
-        return;
-      }
-      if (this.phase === 'rebuild') {
-        if (tp.def.side !== 'A' && tp.def.side !== this.viewSide && this.canFit(tp)) this.flip();
-        const s = this.slotPos(tp.slot);
-        this.drag.kind = 'part';
-        this.drag.rt = tp;
-        this.drag.from = 'tray';
-        this.drag.ox = s.x - x; this.drag.oy = s.y - y;
-        tp.anim = true;
-        tp.x = s.x; tp.y = s.y; tp.sc = this.traySc(tp); tp.rot = s.rot; tp.flipX = 1; tp.alpha = 1;
-        tween(tp, { lift: 1, sc: this.k * 0.9, rot: 0 }, 0.18, ease.outBack);
-        sfx.lift();
-        haptic(8);
-      }
+      // whatever is touched comes to the top of the pile, and can always be dragged aside
+      tp.tz = ++this.topZ;
+      let job: (() => void) | undefined;
+      if (this.phase === 'apart') job = () => { if (tp.broken || tp.dirt) toast(t('takeAllApart'), W / 2, view.H * 0.64, 14 * U); tp.wig = 1; };
+      if (this.phase === 'repair') job = () => { if (tp.broken && !tp.fixed) this.openRepair(tp); else { tp.wig = 1; toast(t('tapBroken'), W / 2, view.H * 0.64, 14 * U); } };
+      if (this.phase === 'clean') job = () => { if (tp.dirt) this.openClean(tp); else { tp.wig = 1; toast(t('tapDirty'), W / 2, view.H * 0.64, 14 * U); } };
+      const rebuild = this.phase === 'rebuild';
+      if (rebuild && tp.def.side !== 'A' && tp.def.side !== this.viewSide && this.canFit(tp)) this.flip();
+      const s = this.trayPos(tp);
+      this.drag.kind = 'part';
+      this.drag.rt = tp;
+      this.drag.from = 'tray';
+      this.drag.tap = job;
+      this.drag.ox = s.x - x; this.drag.oy = s.y - y;
+      tp.anim = true;
+      tp.x = s.x; tp.y = s.y; tp.sc = this.traySc(tp); tp.rot = s.rot; tp.flipX = 1; tp.alpha = 1;
+      // rebuilding: it grows to its fitted size on the way to the gadget; otherwise it just lifts
+      tween(tp, rebuild ? { lift: 1, sc: this.k * 0.9, rot: 0 } : { lift: 0.55, sc: this.traySc(tp) * 1.08 }, 0.18, ease.outBack);
+      emit('ring', s.x, s.y, 1, { color: 'rgba(255,255,255,0.7)', size: 26 * U, life: 0.3, speed: 0 });
+      sfx.lift();
+      haptic(8);
       return;
     }
 
@@ -1144,17 +1172,22 @@ export class Bench {
         const h = this.home(p);
         if (dist(p.x, p.y, h.x, h.y) > 34 * U) this.removePart(p);
         else this.returnHome(p);
+      } else if (!dr.moved && this.phase !== 'rebuild') {
+        // a tap: settle back and do the part's job
+        const s = this.trayPos(p);
+        tween(p, { x: s.x, y: s.y, sc: this.traySc(p), lift: 0 }, 0.12, ease.outCubic, () => { p.anim = false; dr.tap?.(); });
       } else {
         const h = this.home(p);
-        if (this.canFit(p) && (dist(p.x, p.y, h.x, h.y) < 110 * U || this.inDeviceArea(p.x, p.y))) this.fitPart(p);
+        const nearGadget = dist(p.x, p.y, h.x, h.y) < 110 * U || this.inDeviceArea(p.x, p.y);
+        if (this.phase === 'rebuild' && this.canFit(p) && nearGadget) this.fitPart(p);
         else {
-          if (!this.canFit(p)) {
+          if (this.phase === 'rebuild' && nearGadget && !this.canFit(p)) {
             const b = this.fitBlockers(p);
             toast(t('first', tr(b[0].def.name)), view.W / 2, this.center.y - this.L.device.h * this.k * 0.5 - 26 * U, 14 * U);
             sfx.error();
             haptic(25);
-          }
-          this.toSlot(p);
+            this.toSlot(p);
+          } else this.dropOnMat(p);
         }
       }
     }
@@ -1177,8 +1210,13 @@ export class Bench {
     if (this.boxOpen > 0 || !this.inDeviceArea(x, y)) return;
     sfx.box();
     haptic(15);
+    this.devAppear = 1;
+    this.devLift = 0;
+    const cc0 = this.center;
+    // the flaps pop and a few peanuts jump out
+    wait(0.12, () => emit('dust', cc0.x, cc0.y - 10 * view.U, 14, { color: ['#ffffff', '#eef1f4', '#dfe4ea'], speed: 210, size: 7 * view.U, life: 0.8, dir: -Math.PI / 2, spread: 1.6, g: 420 }));
     tween(this, { boxOpen: 1 }, 0.35, ease.outBack, () => {
-      wait(0.2, () => {
+      wait(0.35, () => {
         // the gadget rises out of the packing peanuts, the box slides away under it, it lands on the mat
         sfx.pop();
         sfx.sparkle();
@@ -1235,6 +1273,7 @@ export class Bench {
   removePart(p: RT): void {
     p.state = 'out';
     p.slot = this.nextSlot();
+    p.spot = null;
     p.seen = true;
     sfx.whoosh();
     haptic(12);
@@ -1244,13 +1283,35 @@ export class Bench {
     this.notePulse = 0.6;
   }
 
+  /** Put a carried part down where it is (clamped to the mat), with a little landing. */
+  dropOnMat(p: RT): void {
+    const c = this.clampSpot(p.x, p.y);
+    const rot = clamp(p.rot, -0.6, 0.6);
+    p.spot = { x: c.x, y: c.y, rot };
+    p.tz = ++this.topZ;
+    tween(p, { x: c.x, y: c.y, sc: this.traySc(p), rot, lift: 0, flipX: 1 }, 0.16, ease.inQuad, () => {
+      p.anim = false;
+      this.land(c.x, c.y, p);
+    });
+  }
+
+  /** Landing on the mat: bounce, a puff of dust, a soft thud. */
+  land(x: number, y: number, p: RT): void {
+    const U = view.U;
+    p.pop = 1;
+    sfx.place();
+    haptic(10);
+    emit('dust', x, y + 8 * U, 8, { color: 'rgba(255,255,255,0.75)', speed: 70, size: 4 * U, life: 0.45, spread: Math.PI });
+    emit('ring', x, y, 1, { color: 'rgba(255,255,255,0.45)', size: 30 * U, life: 0.35, speed: 0 });
+  }
+
   toSlot(p: RT, done?: () => void): void {
-    const s = this.slotPos(p.slot);
+    const s = this.trayPos(p);
     p.anim = true;
+    p.tz = ++this.topZ;
     tween(p, { x: s.x, y: s.y, sc: this.traySc(p), rot: s.rot, lift: 0, flipX: 1 }, 0.32, ease.outCubic, () => {
       p.anim = false;
-      p.pop = 1;
-      sfx.place();
+      this.land(s.x, s.y, p);
       done?.();
     });
   }
@@ -1262,8 +1323,11 @@ export class Bench {
       p.anim = false;
       p.pop = 1;
       sfx.place();
+      sfx.tick();
       haptic(18);
       emit('dust', h.x, h.y, 10, { color: 'rgba(255,255,255,0.8)', speed: 90, size: 4, life: 0.5 });
+      emit('ring', h.x, h.y, 1, { color: 'rgba(255,244,190,0.9)', size: 44 * view.U, life: 0.35, speed: 0 });
+      emit('star', h.x, h.y, 5, { color: ['#ffe28a', '#ffffff'], speed: 150, size: 5, life: 0.6 });
       this.notePulse = 0.6;
       if (this.countIn() === this.parts.length) this.advance();
     });
@@ -1369,7 +1433,7 @@ export class Bench {
   openRepair(p: RT): void {
     const f = this.focusPos();
     p.anim = true;
-    const s = this.slotPos(p.slot);
+    const s = this.trayPos(p);
     p.x = s.x; p.y = s.y; p.sc = this.traySc(p); p.rot = s.rot;
     sfx.whoosh();
     tween(p, { x: f.x, y: f.y, sc: this.focusSc(p), rot: 0, lift: 1 }, 0.35, ease.outBack, () => {
@@ -1401,7 +1465,7 @@ export class Bench {
 
   openClean(p: RT): void {
     const f = this.focusPos();
-    const s = this.slotPos(p.slot);
+    const s = this.trayPos(p);
     p.anim = true;
     p.x = s.x; p.y = s.y; p.sc = this.traySc(p); p.rot = s.rot;
     this.focus = p;
@@ -1495,11 +1559,14 @@ export class Bench {
     tween(this, { boxY: 0 }, 0.45, ease.outBack, () => {
       sfx.box();
       tween(this, { devLift: 0 }, 0.35, ease.inCubic, () => {
-        // device is inside: close the flaps
-        this.devAppear = 0;
+        // device is inside, in the peanuts: fold the flaps over it
+        emit('dust', this.center.x, this.center.y, 8, { color: ['#ffffff', '#eef1f4'], speed: 120, size: 6 * view.U, life: 0.5, dir: -Math.PI / 2, spread: 1.4, g: 300 });
         tween(this, { boxOpen: 0 }, 0.3, ease.inCubic, () => {
           sfx.box();
           haptic(20);
+          const cc = this.center;
+          emit('dust', cc.x, cc.y + this.L.device.h * this.k * 0.35, 16, { color: 'rgba(240,226,200,0.85)', speed: 160, size: 6 * view.U, life: 0.6, spread: Math.PI });
+          emit('ring', cc.x, cc.y, 1, { color: 'rgba(255,255,255,0.6)', size: 80 * view.U, life: 0.4, speed: 0 });
           this.power = 0;
           wait(0.35, () => this.host.onPacked(this.bought));
         });

@@ -157,8 +157,15 @@ export class Bench3D {
     const { W, H, dpr } = view;
     resizeStage(W, H, dpr);
     const appear = Math.max(0.001, b.phase === 'box' ? b.devAppear : 1);
-    const s = b.k * appear;
     const d = b.L.device;
+    let s = b.k * appear;
+    if (b.phase === 'box' || b.phase === 'pack') {
+      // inside: footprint within the walls, top below the peanuts; out over the rim: full size
+      const B = this.box;
+      const fit = Math.min(1, ((B.W - 16) * 1.05) / d.w, ((B.D - 16) * 1.05) / d.h, (B.Hh * 1.05 * 0.8) / (this.fTop + this.bTop));
+      const u = Math.min(1, b.devLift * 1.6);
+      s *= fit + (1 - fit) * u * u * (3 - 2 * u);
+    }
     // which face points at the camera?
     if (d.hasBack) {
       v.set(0, 1, 0).applyQuaternion(this.orient);
@@ -198,6 +205,17 @@ export class Bench3D {
   /** World height of a part's outer face (for the screwdriver tip). */
   topWorldY(p: RT): number {
     return this.devInner.localToWorld(this.localTop(p, v)).y;
+  }
+
+/** The removed part under a screen point, by a 3D ray: the nearest hit is the one on top. */
+  pickTray(x: number, y: number, cands: RT[]): RT | null {
+    const objs = cands.map((p) => this.models.get(p)!.group).filter((g) => g.parent);
+    for (const h of rayAt(x, y).intersectObjects(objs, true)) {
+      let o: THREE.Object3D | null = h.object;
+      while (o && !this.owner.has(o)) o = o.parent;
+      if (o && cands.includes(this.owner.get(o)!)) return this.owner.get(o)!;
+    }
+    return null;
   }
 
   /** The part under a screen point: screws by distance, the rest by a real 3D ray. */
@@ -269,11 +287,14 @@ export class Bench3D {
     const b = this.b;
     const m = this.models.get(p)!;
     const st = this.stack(p);
-    const s = b.slotPos(p.slot);
+    const s = b.trayPos(p);
     const sc = b.traySc(p);
-    // later parts land on top of earlier ones where the pile overlaps
-    const y = this.smoothY(p, p.slot * 1.4 * view.U);
-    m.group.scale.setScalar(sc * (1 + p.pop * 0.1));
+    // what was put down later lies on top where the pile overlaps
+    const rank = b.parts.filter((q) => q.state === 'out' && q !== p && q.tz < p.tz).length;
+    const y = this.smoothY(p, rank * 1.6 * view.U);
+    // landing: a quick squash and spring back
+    const sq = Math.sin(p.pop * Math.PI) * 0.12;
+    m.group.scale.set(sc * (1 + sq), sc * (1 - sq * 1.4), sc * (1 + sq));
     this.place(m.group, s.x, s.y, y, st.thick * sc);
     m.group.rotation.set(0, -s.rot + Math.sin(b.time * 50) * p.wig * 0.06, 0);
     this.paint(p, m, false);

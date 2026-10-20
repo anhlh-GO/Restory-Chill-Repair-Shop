@@ -2,12 +2,41 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
-    <title>Chill Fix Corner</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <title>Restory: Chill Repair Shop</title>
+    <!-- Home-screen app: full screen, no browser chrome, status bar over the game -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Restory" />
+    <meta name="application-name" content="Restory" />
+    <meta name="theme-color" content="#1b2236" />
+    <meta name="format-detection" content="telephone=no" />
     <style>
-      html, body { margin: 0; height: 100%; background: #1b2236; overflow: hidden; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+      html, body { margin: 0; height: 100%; background: #1b2236; overflow: hidden; overscroll-behavior: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
       #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
     </style>
+    <script>
+      // The manifest, icons and offline cache are published next to the game on the web
+      // build only (see pwa/ and the workflow); inside the Falcon shell and the APK they are absent.
+      (function () {
+        var web = location.protocol === 'https:' && location.hostname !== 'localhost';
+        if (!web) return;
+        var head = document.head;
+        var add = function (rel, href, sizes) {
+          var l = document.createElement('link');
+          l.rel = rel; l.href = href;
+          if (sizes) l.sizes = sizes;
+          head.appendChild(l);
+        };
+        add('manifest', 'manifest.webmanifest');
+        add('apple-touch-icon', 'icons/apple-touch-icon.png', '180x180');
+        add('icon', 'icons/icon-192.png', '192x192');
+        if ('serviceWorker' in navigator) {
+          window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+        }
+      })();
+    </script>
   </head>
   <body>
     <canvas id="game"></canvas>

@@ -32,6 +32,8 @@ jobs:
         with:
           name: web-build
           path: dist/index.html
+      # home-screen app extras (manifest, icons, offline cache) ride along on the web build only
+      - run: cp -r pwa/. dist/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

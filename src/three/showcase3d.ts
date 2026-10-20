@@ -17,7 +17,7 @@ function init(): boolean {
   if (renderer) return true;
   if (failed) return false;
   try {
-    renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
+    renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
   } catch {
     failed = true;
     return false;

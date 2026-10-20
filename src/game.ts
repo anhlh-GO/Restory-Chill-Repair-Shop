@@ -21,6 +21,7 @@ import { Bench } from './scenes/bench';
 import { Settings } from './scenes/settings';
 import { Collection, markRepaired, loadCollection } from './scenes/collection';
 import { Results, type ResultKind } from './scenes/results';
+import { noteFrame } from './three/stage';
 
 export const LEVEL_COUNT = LEVELS.length;
 
@@ -185,15 +186,19 @@ function startLevel(index: number): void {
   paused = false;
   won = false;
   // The counter is the first beat of play — the level's clock starts here.
-  events.emit('levelStart', { index: level, difficulty: level < 3 ? 'easy' : level < 8 ? 'normal' : 'hard', levelId: `${LEVELS[level].device.id}-${level + 1}` });
+  // two-gadget days are the hard ones (never shown to the player, only reported)
+  const hardDay = LEVELS.filter((x) => x.day === LEVELS[level].day).length > 1;
+  events.emit('levelStart', { index: level, difficulty: hardDay ? 'hard' : level < 3 ? 'easy' : 'normal', levelId: `${LEVELS[level].device.id}-${level + 1}` });
 }
 
 // ---------- loop ----------
 
 let last = performance.now();
 function frame(now: number): void {
-  const dt = Math.min(0.05, (now - last) / 1000);
+  const raw = (now - last) / 1000;
+  const dt = Math.min(0.05, raw);
   last = now;
+  noteFrame(raw);
   if (!paused) {
     updateTweens(dt);
     counter?.update(dt);

@@ -12,6 +12,7 @@ import type { Level, Line } from '../content/story';
 import { drawStreet, skyFor } from './city';
 import { drawCash } from './desk';
 import { counter3D } from '../three/counter3d';
+import { drawDaybreak } from './daybreak';
 
 export interface CounterHost {
   money(): number;
@@ -43,6 +44,9 @@ export class Counter {
   stamp = 0;
   stampOn = false;
   dayCard = 0;
+  /** 0..1 through the night-to-morning sequence before the first customer of a day. */
+  dayT = 1;
+  afterDay: (() => void) | null = null;
   busy = true;
   total = 0;
   tip = 0;
@@ -70,8 +74,11 @@ export class Counter {
         });
       };
       if (host.showDay) {
-        this.dayCard = 0.001;
-        tween(this, { dayCard: 1 }, 0.35, ease.outCubic, () => wait(0.9, () => tween(this, { dayCard: 0 }, 0.35, ease.inCubic, enter)));
+        // a new day: dusk, night, the calendar flips, morning, then the shop opens
+        this.dayCard = 1;
+        this.dayT = 0;
+        this.afterDay = enter;
+        sfx.whoosh();
       } else wait(0.25, enter);
     } else {
       this.custX = 0;
@@ -93,12 +100,26 @@ export class Counter {
     this.ch.time = this.time;
     this.ch.bounce = Math.max(0, this.ch.bounce - dt * 4);
     this.ding = Math.max(0, this.ding - dt * 5);
+    if (this.dayT < 1) {
+      const was = this.dayT;
+      this.dayT = Math.min(1, this.dayT + dt / 3.6);
+      if (was < 0.6 && this.dayT >= 0.6 && this.L.day > 1) sfx.flip();
+      if (was < 0.8 && this.dayT >= 0.8) sfx.door();
+      if (this.dayT >= 1) this.endDayScene();
+    }
     const line = this.lines[this.li];
     if (line && this.chars < this.lineText(line).length) {
       this.chars = Math.min(this.lineText(line).length, this.chars + dt * 42);
       this.blipT -= dt;
       if (this.blipT <= 0) { sfx.blip(this.L.voice); this.blipT = 0.07; }
     }
+  }
+
+  endDayScene(): void {
+    this.dayT = 1;
+    const go = this.afterDay;
+    this.afterDay = null;
+    tween(this, { dayCard: 0 }, 0.4, ease.inCubic, () => go?.());
   }
 
   lineText(l: Line): string { return lang === 'vi' ? l.vi : l.en; }
@@ -214,6 +235,9 @@ export class Counter {
   }
 
   down(x: number, y: number): void {
+    // a tap skips the night
+    if (this.dayT < 1) { this.endDayScene(); return; }
+    if (this.afterDay || this.dayCard > 0) return;
     const sign = this.shelfSign();
     if (Math.abs(x - sign.x) < sign.w / 2 + 6 && Math.abs(y - sign.y) < sign.h / 2 + 10) { this.host.openCollection(); return; }
     if (this.busy) return;
@@ -331,14 +355,9 @@ export class Counter {
 
     // day title card
     if (this.dayCard > 0) {
-      c.fillStyle = `rgba(20,16,30,${0.75 * this.dayCard})`;
-      c.fillRect(0, 0, W, H);
       c.save();
       c.globalAlpha = this.dayCard;
-      c.translate(W / 2, H * 0.42);
-      c.scale(0.8 + 0.2 * this.dayCard, 0.8 + 0.2 * this.dayCard);
-      text(c, `${t('day')} ${this.L.day}`, 0, 0, 52 * U, '#ffe7a0', { font: 'bold', stroke: '#5a3a1a', strokeW: 8 * U });
-      text(c, t('shopName'), 0, 46 * U, 18 * U, '#f4f1ea', { font: 'bold' });
+      drawDaybreak(c, this.dayT, this.L.day, W, H, U, view.dpr, view.top);
       c.restore();
     }
     c.restore();

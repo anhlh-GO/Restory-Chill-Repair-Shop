@@ -1,5 +1,7 @@
 // The levels: one customer, one gadget, one little story each.
-// Twenty gadgets, each repaired exactly once.
+// Twenty gadgets, each repaired exactly once, over fifteen days: one-gadget days
+// to breathe, two-gadget days (4, 7, 9, 12, 14) are the hard ones, with more and
+// bigger jobs. The difficulty is never shown, only felt.
 
 import type { DeviceDef } from './device';
 import type { Look, Pose, Expr } from './characters';
@@ -126,7 +128,7 @@ export const LEVELS: Level[] = [
     name: 'Vy', tag: '#e07b39', voice: 0.9,
     look: { skin: '#f4dcd0', hair: '#1c1620', style: 'braids', outfit: 'dress', top: '#3a2a5e', age: 'adult', choker: true, earrings: true, lipstick: '#4a1632', makeup: '#6a3a76', bow: '#5b3a9e', nails: '#1a1420', necklace: 'cross', eyes: '#5a3a3a' },
     device: camera, broken: 'shutter', puzzle: { kind: 'rotate', size: 3, seed: 7 }, dirty: ['lens', 'plate'],
-    pay: 24, partPrice: 9, day: 2, timeIn: [12, 4], timeOut: [17, 40],
+    pay: 24, partPrice: 9, day: 3, timeIn: [12, 4], timeOut: [17, 40],
     arrive: [
       { en: "Hello. I'm Vy. I just opened a sound restoration workshop at the end of the street.", vi: 'Chào anh. Tôi là Vy. Tôi vừa mở xưởng phục chế âm thanh cuối phố.', expr: 'happy', pose: 'laugh' },
       { en: "It was my mother's. The lens cover jams halfway and won't open.", vi: 'Máy ảnh này của mẹ tôi. Nắp ống kính kẹt nửa chừng, không mở ra được.', expr: 'sad', pose: 'shy' },
@@ -140,8 +142,8 @@ export const LEVELS: Level[] = [
   {
     name: 'Mr. Hoang', tag: '#7d8fd6', voice: 0.75,
     look: { masc: true, skin: '#e8c4a2', hair: '#d8d8d8', style: 'bald', outfit: 'cardigan', top: '#8a5a3b', inner: '#efe3cc', age: 'old', glasses: true, eyes: '#3a2a20' },
-    device: walkman, broken: 'motor', puzzle: { kind: 'trace', layout: 1 }, tasks: [{ part: 'tape', puzzle: { kind: 'wind', turns: 4 } }], dirty: ['door', 'keys'],
-    pay: 22, partPrice: 8, day: 3, timeIn: [9, 15], timeOut: [13, 30],
+    device: walkman, broken: 'motor', puzzle: { kind: 'trace', layout: 1 }, tasks: [{ part: 'tape', puzzle: { kind: 'wind', turns: 6 } }], dirty: ['door', 'keys', 'shell'],
+    pay: 28, partPrice: 8, day: 4, timeIn: [9, 15], timeOut: [13, 30],
     arrive: [
       { en: 'Good morning, young one.', vi: 'Chào buổi sáng, cậu trai trẻ.', expr: 'happy', pose: 'wave' },
       { en: 'This walkman plays my wife\'s singing too slow. She sounds like a sleepy bear.', vi: 'Cái máy này phát giọng hát của vợ tôi chậm rì. Nghe như con gấu buồn ngủ.', expr: 'grin', pose: 'idle' },
@@ -154,8 +156,8 @@ export const LEVELS: Level[] = [
   },
   {
     name: 'Nina', tag: '#ef6f6c', voice: 1.25, look: NINA,
-    device: remote, broken: 'springs', puzzle: { kind: 'wire', wires: 2, seed: 5 }, tasks: [{ part: 'membrane', puzzle: { kind: 'popit', cols: 3, rows: 4, color: '#8c8698' } }], dirty: ['top', 'door'],
-    pay: 24, partPrice: 8, day: 3, timeIn: [16, 40], timeOut: [19, 0],
+    device: remote, broken: 'springs', puzzle: { kind: 'wire', wires: 3, seed: 5 }, tasks: [{ part: 'membrane', puzzle: { kind: 'popit', cols: 4, rows: 5, color: '#8c8698' } }], dirty: ['top', 'door'],
+    pay: 30, partPrice: 8, day: 4, timeIn: [16, 40], timeOut: [19, 0],
     arrive: [
       { en: 'Hiii! Movie night at my place tonight, and THIS happened.', vi: 'Chàooo! Tối nay tụi em xem phim ở nhà em, vậy mà nó dở chứng.', expr: 'grin', pose: 'wave' },
       { en: 'The remote only works if you smack it. My hand hurts. The couch hurts.', vi: 'Cái remote phải đập mới chịu chạy. Tay em đau. Cái ghế cũng đau.', expr: 'annoyed', pose: 'cross' },
@@ -169,7 +171,7 @@ export const LEVELS: Level[] = [
   {
     name: 'Lena', tag: '#3f9ad6', voice: 1.05, look: LENA,
     device: lamp, broken: 'switch', puzzle: { kind: 'wire', wires: 3, seed: 11 }, tasks: [{ part: 'shade', puzzle: { kind: 'blow', dust: 36, seed: 3, look: 'shade' } }], dirty: ['base'],
-    pay: 26, partPrice: 9, day: 4, timeIn: [18, 20], timeOut: [21, 0],
+    pay: 26, partPrice: 9, day: 5, timeIn: [18, 20], timeOut: [21, 0],
     arrive: [
       { en: 'Good evening! Quick question: is a lamp supposed to blink like a disco?', vi: 'Chào anh! Hỏi nhanh nè: đèn bàn chớp như sàn nhảy có bình thường không?', expr: 'surprised', pose: 'idle' },
       { en: "I'm finishing my design portfolio at night and it keeps flickering off.", vi: 'Tôi đang hoàn thiện bộ hồ sơ thiết kế ban đêm mà nó cứ chập chờn tắt.', expr: 'annoyed', pose: 'cross' },
@@ -183,7 +185,7 @@ export const LEVELS: Level[] = [
   {
     name: 'Tuan', tag: '#f08a24', voice: 1.0, look: TUAN,
     device: phone, broken: 'lcd', puzzle: { kind: 'peel', shape: 'screen', color: '#2c4fa8' }, tasks: [{ part: 'keypad', puzzle: { kind: 'popit', cols: 3, rows: 5, color: '#c9cdd6' } }], dirty: ['cover', 'bcover'],
-    pay: 28, partPrice: 10, day: 4, timeIn: [11, 20], timeOut: [12, 25],
+    pay: 28, partPrice: 10, day: 6, timeIn: [11, 20], timeOut: [12, 25],
     arrive: [
       { en: "Delivery! ...Just kidding, it's mine this time.", vi: 'Giao hàng đây! ...Đùa thôi, lần này là đồ của tôi.', expr: 'grin', pose: 'wave' },
       { en: 'My backup phone. Unbreakable, they said. The screen is so scratched I read addresses by guessing.', vi: 'Điện thoại dự phòng của tôi. Người ta bảo nó không bao giờ hỏng. Màn hình xước tới mức tôi đọc địa chỉ bằng cách đoán.', expr: 'surprised', pose: 'idle' },
@@ -196,8 +198,8 @@ export const LEVELS: Level[] = [
   },
   {
     name: 'Grandma Sau', tag: '#c45a8a', voice: 0.85, look: SAU,
-    device: kettle, broken: 'thermo', puzzle: { kind: 'wire', wires: 2, seed: 17 }, tasks: [{ part: 'plate', puzzle: { kind: 'slime', crumbs: 22, seed: 4, color: '#8fd3c7' } }], dirty: ['body', 'lid'],
-    pay: 30, partPrice: 10, day: 5, timeIn: [15, 0], timeOut: [17, 20],
+    device: kettle, broken: 'thermo', puzzle: { kind: 'wire', wires: 3, seed: 17 }, tasks: [{ part: 'plate', puzzle: { kind: 'slime', crumbs: 34, seed: 4, color: '#8fd3c7' } }], dirty: ['body', 'lid', 'handle'],
+    pay: 36, partPrice: 10, day: 7, timeIn: [15, 0], timeOut: [17, 20],
     arrive: [
       { en: 'Hello dear, I brought you some sticky rice cakes.', vi: 'Chào con, bà mang bánh dày cho con nè.', expr: 'happy', pose: 'idle' },
       { en: "My kettle clicks off before the water boils. And the inside looks like a cave.", vi: 'Cái ấm của bà chưa sôi đã tắt phụt. Bên trong thì đóng cặn như hang đá.', expr: 'sad', pose: 'shy' },
@@ -210,8 +212,8 @@ export const LEVELS: Level[] = [
   },
   {
     name: 'DJ Ken', tag: '#9a5be0', voice: 0.95, look: KEN,
-    device: headphones, broken: 'driverL', puzzle: { kind: 'wire', wires: 3, seed: 23 }, tasks: [{ part: 'board', puzzle: { kind: 'solder', pads: 6, seed: 9 } }], dirty: ['cushionL', 'headband'],
-    pay: 32, partPrice: 11, day: 5, timeIn: [19, 30], timeOut: [21, 10],
+    device: headphones, broken: 'driverL', puzzle: { kind: 'wire', wires: 4, seed: 23 }, tasks: [{ part: 'board', puzzle: { kind: 'solder', pads: 8, seed: 9 } }], dirty: ['cushionL', 'cushionR', 'headband'],
+    pay: 38, partPrice: 11, day: 7, timeIn: [19, 30], timeOut: [21, 10],
     arrive: [
       { en: 'Yo, maestro. Emergency in the bass department.', vi: 'Chào thầy. Có chuyện khẩn ở khu vực âm trầm.', expr: 'neutral', pose: 'idle' },
       { en: 'My lucky headphones went silent on the left. I mix half-deaf now.', vi: 'Cái tai nghe may mắn của tôi câm bên trái. Giờ tôi chỉnh nhạc kiểu điếc một bên.', expr: 'annoyed', pose: 'cross' },
@@ -225,7 +227,7 @@ export const LEVELS: Level[] = [
   {
     name: 'Hana', tag: '#d4a017', voice: 1.15, look: HANA,
     device: watch, broken: 'glass', puzzle: { kind: 'peel', shape: 'round', color: '#2a2d36' }, tasks: [{ part: 'board', puzzle: { kind: 'solder', pads: 5, seed: 14 } }], dirty: ['strapT', 'case'],
-    pay: 34, partPrice: 12, day: 6, timeIn: [6, 40], timeOut: [9, 30],
+    pay: 34, partPrice: 12, day: 8, timeIn: [6, 40], timeOut: [9, 30],
     arrive: [
       { en: 'Morning! Sorry, I ran here. Literally ran.', vi: 'Chào buổi sáng! Xin lỗi, tôi chạy tới đây. Chạy thật luôn.', expr: 'grin', pose: 'wave' },
       { en: 'My first marathon is next week and my watch died mid-run. The glass is all scratched too.', vi: 'Tuần sau tôi chạy marathon đầu tiên mà đồng hồ tắt ngúm giữa đường. Mặt kính còn xước hết.', expr: 'sad', pose: 'shy' },
@@ -238,8 +240,8 @@ export const LEVELS: Level[] = [
   },
   {
     name: 'Coach Long', tag: '#3fa34d', voice: 0.8, look: LONG,
-    device: fan, broken: 'rotor', puzzle: { kind: 'blow', dust: 50, seed: 8 }, tasks: [{ part: 'motor', puzzle: { kind: 'wire', wires: 3, seed: 31 } }], dirty: ['cage', 'housing'],
-    pay: 34, partPrice: 12, day: 6, timeIn: [13, 0], timeOut: [16, 30],
+    device: fan, broken: 'rotor', puzzle: { kind: 'blow', dust: 68, seed: 8 }, tasks: [{ part: 'motor', puzzle: { kind: 'wire', wires: 4, seed: 31 } }], dirty: ['cage', 'housing', 'rear'],
+    pay: 41, partPrice: 12, day: 9, timeIn: [13, 0], timeOut: [16, 30],
     arrive: [
       { en: 'Afternoon. This fan has cooled my boxing gym for twenty years.', vi: 'Chào cậu. Cái quạt này làm mát phòng tập quyền anh của tôi hai mươi năm rồi.', expr: 'neutral', pose: 'idle' },
       { en: 'Now it hums like it is trying, but the blades just sit there. Like my students on Monday.', vi: 'Giờ nó cứ ù ù như đang cố, mà cánh thì đứng im. Giống học trò tôi sáng thứ Hai.', expr: 'annoyed', pose: 'cross' },
@@ -252,8 +254,8 @@ export const LEVELS: Level[] = [
   },
   {
     name: 'Duc', tag: '#2a6fd6', voice: 1.2, look: DUC,
-    device: keyboard, broken: 'case', puzzle: { kind: 'slime', crumbs: 30, seed: 6, color: '#f2b4d8' }, tasks: [{ part: 'pcb', puzzle: { kind: 'solder', pads: 8, seed: 27 } }], dirty: ['keysTop', 'space'],
-    pay: 36, partPrice: 12, day: 7, timeIn: [20, 15], timeOut: [22, 0],
+    device: keyboard, broken: 'case', puzzle: { kind: 'slime', crumbs: 42, seed: 6, color: '#f2b4d8' }, tasks: [{ part: 'pcb', puzzle: { kind: 'solder', pads: 10, seed: 27 } }, { part: 'mods', puzzle: { kind: 'popit', cols: 5, rows: 2, color: '#f6b8c8' } }], dirty: ['keysTop', 'space'],
+    pay: 44, partPrice: 12, day: 9, timeIn: [20, 15], timeOut: [22, 0],
     arrive: [
       { en: "Hey. I'm Duc. I stream games at night. Small channel. Very loyal fans.", vi: 'Chào anh. Em là Đức. Em stream game buổi tối. Kênh nhỏ thôi nhưng fan trung thành lắm.', expr: 'neutral', pose: 'idle' },
       { en: 'I spilled bubble tea on my keyboard. Now W sticks and half the row is dead.', vi: 'Em làm đổ trà sữa lên bàn phím. Giờ phím W dính, nửa hàng thì chết luôn.', expr: 'sad', pose: 'shy' },
@@ -267,7 +269,7 @@ export const LEVELS: Level[] = [
   {
     name: 'Bin', tag: '#e0569b', voice: 1.35, look: BIN,
     device: gamepad, broken: 'membrane', puzzle: { kind: 'popit', cols: 4, rows: 3, color: '#b9a4e8' }, tasks: [{ part: 'rumbleL', puzzle: { kind: 'wire', wires: 2, seed: 41 } }], dirty: ['top', 'shoulderL'],
-    pay: 36, partPrice: 13, day: 7, timeIn: [9, 0], timeOut: [11, 30],
+    pay: 36, partPrice: 13, day: 10, timeIn: [9, 0], timeOut: [11, 30],
     arrive: [
       { en: 'Mister! I beat Grandpa\'s record! He was SO proud.', vi: 'Chú ơi! Con phá kỷ lục của ông rồi! Ông tự hào lắm luôn.', expr: 'happy', pose: 'cheer' },
       { en: 'So now we play together. But his controller is ancient. The A button is mushy and it stopped rumbling.', vi: 'Giờ hai ông cháu chơi chung. Mà tay cầm của ông cổ lắm. Nút A mềm nhũn, rung cũng không rung nữa.', expr: 'sad', pose: 'shy' },
@@ -281,7 +283,7 @@ export const LEVELS: Level[] = [
   {
     name: 'Chef Bao', tag: '#d9772b', voice: 0.82, look: BAO,
     device: toaster, broken: 'tray', puzzle: { kind: 'blow', dust: 44, seed: 19, look: 'tray' }, tasks: [{ part: 'element', puzzle: { kind: 'wire', wires: 2, seed: 7 } }], dirty: ['shell'],
-    pay: 38, partPrice: 13, day: 8, timeIn: [6, 10], timeOut: [7, 45],
+    pay: 38, partPrice: 13, day: 11, timeIn: [6, 10], timeOut: [7, 45],
     arrive: [
       { en: "Morning! Chef Bao, banh mi cart, corner of the market.", vi: 'Chào cậu! Bảo đây, xe bánh mì góc chợ.', expr: 'grin', pose: 'wave' },
       { en: 'My toaster warms only one side now. Half crunchy, half sad.', vi: 'Máy nướng của tôi giờ chỉ nóng một bên. Nửa giòn, nửa buồn.', expr: 'annoyed', pose: 'cross' },
@@ -294,8 +296,8 @@ export const LEVELS: Level[] = [
   },
   {
     name: 'Linh', tag: '#e9a23b', voice: 1.18, look: LINH,
-    device: calculator, broken: 'keys', puzzle: { kind: 'popit', cols: 4, rows: 5, color: '#e8e2d4' }, tasks: [{ part: 'lcd', puzzle: { kind: 'peel', shape: 'wide', color: '#3a3f4a' } }], dirty: ['case', 'back'],
-    pay: 38, partPrice: 13, day: 8, timeIn: [16, 30], timeOut: [18, 0],
+    device: calculator, broken: 'keys', puzzle: { kind: 'popit', cols: 4, rows: 5, color: '#e8e2d4' }, tasks: [{ part: 'lcd', puzzle: { kind: 'peel', shape: 'wide', color: '#3a3f4a' } }, { part: 'board', puzzle: { kind: 'solder', pads: 7, seed: 45 } }], dirty: ['case', 'back'],
+    pay: 46, partPrice: 13, day: 12, timeIn: [9, 30], timeOut: [11, 0],
     arrive: [
       { en: 'Hi! Math exam tomorrow. Final. Biggest one.', vi: 'Chào anh! Mai em thi toán. Thi cuối kỳ. Bài to nhất.', expr: 'surprised', pose: 'idle' },
       { en: "This calculator was my dad's in university. It's my lucky one. The screen is foggy and the 7 doesn't press.", vi: 'Máy tính này hồi đại học của bố em. Là máy may mắn của em. Màn hình mờ căm, phím 7 bấm không ăn.', expr: 'sad', pose: 'shy' },
@@ -308,8 +310,8 @@ export const LEVELS: Level[] = [
   },
   {
     name: 'Ms. Ha', tag: '#6a8fd0', voice: 0.92, look: HA,
-    device: clock, broken: 'movement', puzzle: { kind: 'wind', turns: 6, look: 'spring' }, tasks: [{ part: 'glass', puzzle: { kind: 'peel', shape: 'round', color: '#c94a3a' } }, { part: 'aboard', puzzle: { kind: 'solder', pads: 5, seed: 33 } }], dirty: ['case', 'bellL'],
-    pay: 40, partPrice: 14, day: 9, timeIn: [7, 5], timeOut: [17, 0],
+    device: clock, broken: 'movement', puzzle: { kind: 'wind', turns: 8, look: 'spring' }, tasks: [{ part: 'glass', puzzle: { kind: 'peel', shape: 'round', color: '#c94a3a' } }, { part: 'aboard', puzzle: { kind: 'solder', pads: 7, seed: 33 } }], dirty: ['case', 'bellL', 'bellR'],
+    pay: 48, partPrice: 14, day: 12, timeIn: [13, 5], timeOut: [17, 0],
     arrive: [
       { en: 'Good morning. I am a teacher. I have not been late in twelve years.', vi: 'Chào cậu. Tôi là giáo viên. Mười hai năm nay tôi chưa đi trễ lần nào.', expr: 'neutral', pose: 'idle' },
       { en: 'This morning my alarm clock simply... stopped. I was late. Five minutes. The children cheered.', vi: 'Sáng nay đồng hồ báo thức của tôi cứ thế... đứng im. Tôi đi trễ. Năm phút. Học trò reo hò.', expr: 'annoyed', pose: 'cross' },
@@ -322,8 +324,8 @@ export const LEVELS: Level[] = [
   },
   {
     name: 'Mai', tag: '#e0569b', voice: 1.08, look: MAI,
-    device: toothbrush, broken: 'head', puzzle: { kind: 'slime', crumbs: 18, seed: 12, color: '#9ee6f2' }, tasks: [{ part: 'board', puzzle: { kind: 'solder', pads: 4, seed: 51 } }, { part: 'motor', puzzle: { kind: 'wire', wires: 2, seed: 13 } }], dirty: ['sleeve'],
-    pay: 40, partPrice: 14, day: 9, timeIn: [12, 10], timeOut: [13, 20],
+    device: toothbrush, broken: 'head', puzzle: { kind: 'slime', crumbs: 18, seed: 12, color: '#9ee6f2' }, tasks: [{ part: 'board', puzzle: { kind: 'solder', pads: 4, seed: 51 } }], dirty: ['sleeve'],
+    pay: 40, partPrice: 14, day: 13, timeIn: [12, 10], timeOut: [13, 20],
     arrive: [
       { en: "Hi, lunch break, so I'll be quick! Dentist at two.", vi: 'Chào anh, đang nghỉ trưa nên tôi nói nhanh! Hai giờ tôi đi nha sĩ.', expr: 'grin', pose: 'wave' },
       { en: 'My toothbrush died mid-brush this morning. I walked into a meeting with half a smile.', vi: 'Sáng nay bàn chải điện chết giữa chừng. Tôi bước vào cuộc họp với nửa nụ cười sạch.', expr: 'annoyed', pose: 'cross' },
@@ -336,8 +338,8 @@ export const LEVELS: Level[] = [
   },
   {
     name: 'Nhi', tag: '#ff8fb1', voice: 1.4, look: NHI,
-    device: musicbox, broken: 'spring', puzzle: { kind: 'wind', turns: 5, look: 'spring' }, tasks: [{ part: 'comb', puzzle: { kind: 'blow', dust: 30, seed: 21, look: 'comb' } }], dirty: ['box', 'dancer'],
-    pay: 30, partPrice: 10, day: 10, timeIn: [10, 30], timeOut: [15, 0],
+    device: musicbox, broken: 'spring', puzzle: { kind: 'wind', turns: 7, look: 'spring' }, tasks: [{ part: 'comb', puzzle: { kind: 'blow', dust: 44, seed: 21, look: 'comb' } }, { part: 'glass', puzzle: { kind: 'peel', shape: 'round', color: '#8a5a32' } }], dirty: ['box', 'dancer'],
+    pay: 40, partPrice: 10, day: 14, timeIn: [10, 30], timeOut: [15, 0],
     arrive: [
       { en: "Hello! I'm Nhi. Grandma Sau is my grandma! She said you fix everything.", vi: 'Chào chú! Con là Nhi. Bà Sáu là bà nội con! Bà nói chú sửa được mọi thứ.', expr: 'happy', pose: 'wave' },
       { en: "Grandma gave me her music box. But the dancer stopped dancing and the song stopped singing.", vi: 'Bà cho con hộp nhạc của bà. Mà cô vũ công không múa nữa, bài hát cũng im luôn.', expr: 'sad', pose: 'shy' },
@@ -350,8 +352,8 @@ export const LEVELS: Level[] = [
   },
   {
     name: 'Mr. Tu', tag: '#4a7a9a', voice: 0.72, look: TU,
-    device: flashlight, broken: 'spring', puzzle: { kind: 'wire', wires: 2, seed: 61 }, tasks: [{ part: 'lens', puzzle: { kind: 'peel', shape: 'round', color: '#3d4a5a' } }, { part: 'reflector', puzzle: { kind: 'blow', dust: 28, seed: 37, look: 'reflector' } }], dirty: ['head', 'cover'],
-    pay: 42, partPrice: 15, day: 10, timeIn: [17, 50], timeOut: [19, 10],
+    device: flashlight, broken: 'spring', puzzle: { kind: 'wire', wires: 3, seed: 61 }, tasks: [{ part: 'lens', puzzle: { kind: 'peel', shape: 'round', color: '#3d4a5a' } }, { part: 'reflector', puzzle: { kind: 'blow', dust: 40, seed: 37, look: 'reflector' } }, { part: 'led', puzzle: { kind: 'solder', pads: 6, seed: 63 } }], dirty: ['head', 'cover'],
+    pay: 52, partPrice: 15, day: 14, timeIn: [17, 50], timeOut: [19, 10],
     arrive: [
       { en: 'Evening, son. I fish at night, out past the bridge.', vi: 'Chào con. Tối nào bác cũng đi câu, ngoài chân cầu kia.', expr: 'neutral', pose: 'idle' },
       { en: "This flashlight flickers like a sleepy firefly. Last night I almost stepped on a crab.", vi: 'Cái đèn pin này chập chờn như con đom đóm buồn ngủ. Tối qua bác suýt dẫm lên con cua.', expr: 'grin', pose: 'think' },
@@ -365,7 +367,7 @@ export const LEVELS: Level[] = [
   {
     name: 'Kai', tag: '#4fbf9f', voice: 1.1, look: KAI,
     device: radio, broken: 'tape', puzzle: { kind: 'wind', turns: 6 }, tasks: [{ part: 'spkL', puzzle: { kind: 'wire', wires: 4, seed: 71 } }, { part: 'grilleL', puzzle: { kind: 'blow', dust: 40, seed: 29, look: 'grille' } }, { part: 'board', puzzle: { kind: 'solder', pads: 9, seed: 77 } }], dirty: ['shell', 'door'],
-    pay: 60, partPrice: 18, day: 11, timeIn: [10, 0], timeOut: [17, 30],
+    pay: 60, partPrice: 18, day: 15, timeIn: [10, 0], timeOut: [17, 30],
     arrive: [
       { en: "Boss! Mochi is super fluffy now. All thanks to you.", vi: 'Anh ơi! Mochi giờ bông xù lắm. Nhờ anh hết đó.', expr: 'grin', pose: 'peace' },
       { en: "Big news: the whole street is throwing a party tonight. Everyone you helped is coming.", vi: 'Tin lớn nè: tối nay cả khu phố mở tiệc. Ai được anh sửa đồ cũng tới hết.', expr: 'happy', pose: 'cheer' },

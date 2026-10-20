@@ -2,7 +2,7 @@
 // customer's box, pen cup, plant, photo, service bell and lamp on it.
 // One shared instance — the props are the same for every customer.
 
-import { THREE, initStage, resizeStage, setCounterView, renderPass, disposeObject } from './stage';
+import { THREE, initStage, resizeStage, setCounterView, renderOnly, disposeObject } from './stage';
 import { BoxModel, std } from './models';
 import { makeLamp, makePenCup, makeFrame, makeBell, makePlant, woodTexture } from './props';
 import { view } from '../core/view';
@@ -23,6 +23,9 @@ class Counter3D {
   box!: BoxModel;
   bell!: THREE.Group;
   key = '';
+  /** The counter is mostly still: its last picture is reused until something on it moves. */
+  shot = document.createElement('canvas');
+  shotKey = '';
 
   constructor() {
     this.ok = initStage();
@@ -77,6 +80,8 @@ class Counter3D {
 
   render(c: CanvasRenderingContext2D, pose: CounterPose): void {
     const { W, H, U, dpr } = view;
+    const still = `${W}x${H}@${dpr}:${pose.yC}:${pose.boxOn}:${pose.boxY.toFixed(3)}:${pose.ding.toFixed(2)}`;
+    if (still === this.shotKey) { c.drawImage(this.shot, 0, 0, W, H); return; }
     resizeStage(W, H, dpr);
     setCounterView(pose.yC);
     this.layout(W, H, U);
@@ -91,7 +96,14 @@ class Counter3D {
       g.rotation.set(Math.max(0, k - 0.35) * 0.8, 0.06, 0);
       objs.push(g);
     }
-    renderPass(c, objs, W, H, { cam: 'counter', ground: false });
+    const cv = renderOnly(objs, { cam: 'counter', ground: false });
+    if (!cv) return;
+    if (this.shot.width !== cv.width || this.shot.height !== cv.height) { this.shot.width = cv.width; this.shot.height = cv.height; }
+    const g = this.shot.getContext('2d')!;
+    g.clearRect(0, 0, this.shot.width, this.shot.height);
+    g.drawImage(cv, 0, 0);
+    this.shotKey = still;
+    c.drawImage(this.shot, 0, 0, W, H);
   }
 }
 

@@ -446,7 +446,7 @@ export class Bench3D {
         objs.push(tool);
       }
     }
-    renderPass(c, objs, W, H);
+    renderPass(c, objs, W, H, { shadows: false });
   }
 
   /** The cleaning pad under the part being scrubbed, sized to it once it has arrived. */

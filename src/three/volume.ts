@@ -101,7 +101,8 @@ export function buildVolume(def: PartDef, thick: number, bb: BB): { geo: THREE.B
   const surf = surfaceOf(def, thick, bb) as Surface & { dist(x: number, y: number): number; inside(x: number, y: number): boolean; hollow: boolean; wall: number; R: number };
   const polys = polysOf(def, bb);
   const w = bb.x1 - bb.x0, h = bb.y1 - bb.y0;
-  const step = Math.max(1.6, Math.min(6, Math.max(w, h) / 64));
+  // ~44 samples across the long side: smooth curves at a phone-friendly triangle count
+  const step = Math.max(2.2, Math.min(7, Math.max(w, h) / 44));
 
   // sample points: the outline (d = 0) plus an interior grid, denser where the surface bends
   const rings = polys.map((p) => densify(p, step * 0.8));

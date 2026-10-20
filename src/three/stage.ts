@@ -30,7 +30,8 @@ export function initStage(): boolean {
   if (renderer) return true;
   try {
     const cv = document.createElement('canvas');
-    renderer = new THREE.WebGLRenderer({ canvas: cv, alpha: true, antialias: true, preserveDrawingBuffer: true, powerPreference: 'high-performance' });
+    // dense phone screens are sharp enough without MSAA; the picture is copied right after each render
+    renderer = new THREE.WebGLRenderer({ canvas: cv, alpha: true, antialias: (window.devicePixelRatio || 1) < 2, powerPreference: 'high-performance' });
   } catch {
     renderer = null;
     return false;
@@ -40,7 +41,9 @@ export function initStage(): boolean {
   renderer.toneMapping = THREE.NeutralToneMapping;
   renderer.toneMappingExposure = 1.0;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
+  // the shadow map is redrawn only by the passes that ask for it (see renderPass)
+  renderer.shadowMap.autoUpdate = false;
 
   scene = new THREE.Scene();
   const pmrem = new THREE.PMREMGenerator(renderer);
@@ -55,7 +58,7 @@ export function initStage(): boolean {
   // the desk lamp: warm key light from the top-right, shadows fall down-left
   sun = new THREE.DirectionalLight(0xfff0dc, 1.55);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 1.5;
   sun.shadow.radius = 6;
@@ -75,12 +78,32 @@ export function initStage(): boolean {
   return true;
 }
 
+// ---- adaptive resolution: the 3D layer renders at most 2x, and less while frames run long ----
+
+const MAX_Q = 2;
+let quality = MAX_Q;
+let ema = 1 / 60;
+let judge = 0;
+
+/** Feed every frame's real duration; the 3D resolution steps down when the phone struggles, back up when it copes. */
+export function noteFrame(dt: number): void {
+  ema += (Math.min(dt, 0.1) - ema) * 0.08;
+  judge += dt;
+  if (judge < 1.2) return;
+  judge = 0;
+  if (ema > 1 / 42 && quality > 1) quality = Math.max(1, quality - 0.25);
+  else if (ema < 1 / 56 && quality < MAX_Q) quality = Math.min(MAX_Q, quality + 0.25);
+}
+
 export function resizeStage(W: number, H: number, dpr: number): void {
   if (!renderer) return;
-  if (size.W === W && size.H === H && size.dpr === dpr) return;
-  size = { W, H, dpr };
-  renderer.setPixelRatio(dpr);
+  const pr = Math.min(dpr, quality);
+  if (size.W === W && size.H === H && size.dpr === pr) return;
+  const sameView = size.W === W && size.H === H;
+  size = { W, H, dpr: pr };
+  renderer.setPixelRatio(pr);
   renderer.setSize(W, H, false);
+  if (sameView) return; // only the resolution changed
   camera.aspect = W / H;
   camera.fov = FOV;
   const D = H / 2 / Math.tan((FOV * Math.PI) / 360);
@@ -153,13 +176,21 @@ export interface PassOpts {
   cam?: 'bench' | 'counter';
   /** Draw the invisible shadow-catcher plane at y = 0 (off when a real surface is in the pass). */
   ground?: boolean;
+  /** Recompute the shadow map (default). The pass of things in the hand reuses the last one. */
+  shadows?: boolean;
 }
 
 /** Render only `objs` (children of root) and composite onto the 2D canvas. */
 export function renderPass(ctx: CanvasRenderingContext2D, objs: THREE.Object3D[], W: number, H: number, opts: PassOpts = {}): void {
-  if (!renderer) return;
+  const cv = renderOnly(objs, opts);
+  if (cv) ctx.drawImage(cv, 0, 0, W, H);
+}
+
+/** Render only `objs`; returns the WebGL canvas (read it right away: it is reused by the next pass). */
+export function renderOnly(objs: THREE.Object3D[], opts: PassOpts = {}): HTMLCanvasElement | null {
+  if (!renderer) return null;
   for (const ch of root.children) ch.visible = false;
-  if (!objs.length) return;
+  if (!objs.length) return null;
   for (const o of objs) {
     if (o.parent !== root) root.add(o);
     o.visible = true;
@@ -170,8 +201,9 @@ export function renderPass(ctx: CanvasRenderingContext2D, objs: THREE.Object3D[]
   // on the bench the lamp shines from the top-right; at the counter the light comes from the shop, in front
   if (counter) sun.position.set(S * 0.5, S * 1.3, S * 0.9);
   else sun.position.set(S * 0.55, S * 1.4, -S * 0.45);
+  renderer.shadowMap.needsUpdate = opts.shadows !== false;
   renderer.render(scene, counter ? counterCam : camera);
-  ctx.drawImage(renderer.domElement, 0, 0, W, H);
+  return renderer.domElement;
 }
 
 export function disposeObject(o: THREE.Object3D): void {

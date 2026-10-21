@@ -4,7 +4,7 @@
 
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { THREE } from './stage';
-import { outlineOf, paintMode, screwHead, rng, type Pts } from '../core/draw';
+import { outlineOf, shapeFrom, paintMode, screwHead, rng, type Pts } from '../core/draw';
 import type { PartDef, DrawState, DeviceDef, Bump } from '../content/device';
 import { SCREW_R } from '../content/device';
 import { buildVolume, surfaceOf, type Surface } from './volume';
@@ -96,7 +96,7 @@ export class PartModel {
   /** Two-faced base shell: a second body hangs mirrored underneath, painted with the back view. */
   dual = false;
   bellyMesh?: THREE.Mesh;
-  back?: { canvas: HTMLCanvasElement; tex: THREE.CanvasTexture; cap: THREE.MeshStandardMaterial; mesh: THREE.Mesh; key: string };
+  back?: { canvas: HTMLCanvasElement; tex: THREE.CanvasTexture; cap: THREE.MeshStandardMaterial; mesh: THREE.Mesh; key: string; bb: { x0: number; x1: number; y0: number; y1: number } };
 
   /** Rounded underside of a one-faced gadget's base (its height), so it is round all over. */
   belly = 0;
@@ -130,11 +130,16 @@ export class PartModel {
         tex.colorSpace = THREE.SRGBColorSpace;
         tex.anisotropy = 4;
         const cap = std(0xffffff, kind, { map: tex });
-        // turned over about the device's long axis: x mirrors, exactly like the back view is drawn
-        const mesh = new THREE.Mesh(geo, [cap, this.side]);
+        // the back body: the outline mirrored (as the back view sees it), then turned over about the
+        // device's long axis, so it lies exactly under the front one even for lopsided outlines
+        const o = outlineOf(def.shape);
+        const flip = (pts: Pts): Pts => pts.map(([x, y]) => [-x, y] as [number, number]).reverse();
+        const mirDef: PartDef = o ? { ...def, shape: shapeFrom(flip(o.pts), (o.holes ?? []).map(flip)), bumps: undefined } : def;
+        const mbb = { x0: -this.bb.x1, x1: -this.bb.x0, y0: this.bb.y0, y1: this.bb.y1 };
+        const mesh = new THREE.Mesh(o ? buildVolume(mirDef, thick, mbb).geo : geo, [cap, this.side]);
         mesh.rotation.z = Math.PI;
         this.group.add(mesh);
-        this.back = { canvas, tex, cap, mesh, key: '' };
+        this.back = { canvas, tex, cap, mesh, key: '', bb: mbb };
       }
       if (belly > 0) {
         // the outside of the shell, mirrored under it: a solid rounded body in the shell's colour
@@ -210,7 +215,8 @@ export class PartModel {
     c.clearRect(0, 0, canvas.width, canvas.height);
     c.fillStyle = typeof this.side.color === 'object' ? `#${this.side.color.getHexString()}` : '#888';
     c.fillRect(0, 0, canvas.width, canvas.height);
-    c.setTransform(this.res, 0, 0, this.res, -this.bb.x0 * this.res, -this.bb.y0 * this.res);
+    const bb = onBack ? this.back!.bb : this.bb;
+    c.setTransform(this.res, 0, 0, this.res, -bb.x0 * this.res, -bb.y0 * this.res);
     paintMode.flat = true;
     try {
       this.def.draw(c, state);

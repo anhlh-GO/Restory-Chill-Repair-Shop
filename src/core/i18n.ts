@@ -96,6 +96,45 @@ const UI = {
   ownerOf: { en: 'Owner: {0}', vi: 'Chủ: {0}' },
   dayN: { en: 'Day {0}', vi: 'Ngày {0}' },
   dragToSpin: { en: 'Drag to spin', vi: 'Kéo để xoay' },
+  // chapters
+  chapterDone: { en: 'Chapter 1 complete!', vi: 'Hoàn thành Chương 1!' },
+  chapterDoneSub: { en: 'The street threw you a party. New faces are on the way…', vi: 'Cả phố mở tiệc mừng tiệm. Khách mới sắp tới…' },
+  chapterNext: { en: 'Day 16 ☀', vi: 'Sang ngày 16 ☀' },
+  // collection 2.0
+  tabArchive: { en: 'Archive', vi: 'Lưu trữ' },
+  tabAlbums: { en: 'Albums', vi: 'Album' },
+  tabMemories: { en: 'Keepsakes', vi: 'Kỷ vật' },
+  claim: { en: 'Claim', vi: 'Nhận' },
+  claimed: { en: 'Claimed ✓', vi: 'Đã nhận ✓' },
+  locked: { en: 'Locked', vi: 'Chưa mở' },
+  memoryHow: { en: 'Unlocks after: {0}', vi: 'Mở khi sửa xong: {0}' },
+  newMemory: { en: 'New keepsake: {0}', vi: 'Kỷ vật mới: {0}' },
+  albumReward: { en: 'Reward: {0}', vi: 'Thưởng: {0}' },
+  badgeRestorer: { en: '🏅 Neighborhood Restorer', vi: '🏅 Thợ phục chế của phố' },
+  // shop progression
+  shopBtn: { en: '🛠 Shop', vi: '🛠 Nâng cấp' },
+  improveShop: { en: 'Improve shop 🛠', vi: 'Nâng cấp tiệm 🛠' },
+  shopTitle: { en: 'Improve the shop', vi: 'Nâng cấp tiệm' },
+  shopSub: { en: 'Upgrades only change how the shop looks. Every job stays playable.', vi: 'Nâng cấp chỉ làm đẹp tiệm. Mọi đơn vẫn chơi được bình thường.' },
+  buy: { en: 'Buy ${0}', vi: 'Mua ${0}' },
+  owned: { en: 'Owned ✓', vi: 'Đã có ✓' },
+  tierN: { en: 'Tier {0}', vi: 'Cấp {0}' },
+  unlockAfter: { en: 'Opens after customer {0}', vi: 'Mở sau khách thứ {0}' },
+  needPrev: { en: 'Buy the tier before', vi: 'Cần mua cấp trước' },
+  notEnough: { en: 'Not enough cash yet', vi: 'Chưa đủ tiền' },
+  bought: { en: 'Upgraded! ✨', vi: 'Đã nâng cấp! ✨' },
+  shopOpens: { en: 'The shop can be upgraded now! 🛠', vi: 'Giờ đã có thể nâng cấp tiệm! 🛠' },
+  // quick diagnosis
+  diagTitle: { en: 'What seems wrong?', vi: 'Có vẻ hỏng chỗ nào?' },
+  diagAsk: { en: 'Tap the part you suspect', vi: 'Chạm vào linh kiện bạn nghi' },
+  diagRight: { en: 'Spot on! 🔍', vi: 'Chẩn đoán chuẩn! 🔍' },
+  diagWrong: { en: 'Hmm, not that one. Look again.', vi: 'Hừm, chưa phải. Thử lại nhé.' },
+  diagHint: { en: 'Hint: think about the symptom', vi: 'Gợi ý: nghĩ về triệu chứng' },
+  diagSkip: { en: 'Skip', vi: 'Bỏ qua' },
+  // settings: start over
+  clearData: { en: '🗑 Clear data', vi: '🗑 Xóa dữ liệu' },
+  clearConfirm: { en: 'Tap again to erase all', vi: 'Chạm lần nữa để xóa hết' },
+  clearDone: { en: 'Fresh start! ✨', vi: 'Bắt đầu lại từ đầu! ✨' },
 } satisfies Record<string, Txt>;
 
 export type UIKey = keyof typeof UI;

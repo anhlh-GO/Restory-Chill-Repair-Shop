@@ -100,6 +100,8 @@ export class PartModel {
 
   /** Rounded underside of a one-faced gadget's base (its height), so it is round all over. */
   belly = 0;
+  /** Show the back body off the gadget too (a base turned over for cleaning). */
+  showBack = false;
 
   constructor(def: PartDef, thick: number, dual = false, belly = 0) {
     this.dual = dual;
@@ -200,13 +202,14 @@ export class PartModel {
   paint(state: DrawState, key: string, overlays: (c: CanvasRenderingContext2D) => void): void {
     if (this.dual) {
       // both faces are real geometry: the back body only exists while assembled
-      if (this.back) this.back.mesh.visible = state.inDevice;
-      for (const b of this.bumps) b.mesh.visible = b.view !== 'B' || state.inDevice;
+      const backOn = state.inDevice || this.showBack;
+      if (this.back) this.back.mesh.visible = backOn;
+      for (const b of this.bumps) b.mesh.visible = b.view !== 'B' || backOn;
     } else for (const b of this.bumps) b.mesh.visible = !b.view || b.view === state.view || !state.inDevice && b.view === 'F';
     if (this.cordIn && this.cordOut) { this.cordIn.visible = state.inDevice; this.cordOut.visible = !state.inDevice; }
     if (this.bellyMesh) this.bellyMesh.visible = state.inDevice;
     if (this.def.kind === 'screw') return;
-    const onBack = this.dual && this.back && state.inDevice && state.view === 'B';
+    const onBack = this.dual && this.back && (state.inDevice || this.showBack) && state.view === 'B';
     if (onBack) { if (key === this.back!.key) return; this.back!.key = key; }
     else { if (key === this.key) return; this.key = key; }
     const canvas = onBack ? this.back!.canvas : this.canvas;

@@ -248,12 +248,12 @@ function shadeHex(hex: string, k: number): string {
  * Blue self-healing cutting mat, w × d world units, with a grid every `cell`
  * units, ruler numbers along the far edge and the usual angle guides.
  */
-export function makeMat(w: number, d: number, cell: number): THREE.Mesh {
+export function makeMat(w: number, d: number, cell: number, color = '#2f5189'): THREE.Mesh {
   const px = 2;
   const tw = Math.min(2048, Math.ceil(w * px)), th = Math.min(4096, Math.ceil(d * px));
   const sx = tw / w, sy = th / d;
   const tex = canvasTex(tw, th, (c) => {
-    c.fillStyle = '#2f5189';
+    c.fillStyle = color;
     c.fillRect(0, 0, tw, th);
     c.scale(sx, sy);
     const m = cell * 0.6; // border

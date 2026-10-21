@@ -471,3 +471,44 @@ export function badge(c: C, x: number, y: number, s: number, kind: 'broken' | 'd
 }
 
 export { shade };
+
+/** Hint button: a warm light bulb in a round badge, with a FREE tag. `glow` 0..1 calls for attention. */
+export function drawBulbBtn(c: C, x: number, y: number, s: number, glow = 0, press = 0): void {
+  c.save();
+  c.translate(x, y + press * 2 * s);
+  c.scale(1 - press * 0.06, 1 - press * 0.06);
+  if (glow > 0) {
+    const g = c.createRadialGradient(0, 0, 10 * s, 0, 0, 34 * s);
+    g.addColorStop(0, `rgba(255,226,120,${0.55 * glow})`);
+    g.addColorStop(1, 'rgba(255,226,120,0)');
+    c.fillStyle = g;
+    c.beginPath(); c.arc(0, 0, 34 * s, 0, Math.PI * 2); c.fill();
+  }
+  c.fillStyle = 'rgba(0,0,0,0.35)';
+  c.beginPath(); c.arc(0, 3 * s, 20 * s, 0, Math.PI * 2); c.fill();
+  const bg = c.createLinearGradient(0, -20 * s, 0, 20 * s);
+  bg.addColorStop(0, '#ffd75a'); bg.addColorStop(1, '#f0a630');
+  c.fillStyle = bg;
+  c.beginPath(); c.arc(0, 0, 20 * s, 0, Math.PI * 2); c.fill();
+  c.strokeStyle = '#b8701c'; c.lineWidth = 2 * s; c.stroke();
+  // the bulb: glass, neck, screw base
+  c.fillStyle = '#fffbe8';
+  c.beginPath();
+  c.arc(0, -4 * s, 8.5 * s, Math.PI * 0.78, Math.PI * 2.22);
+  c.lineTo(3.4 * s, 6 * s); c.lineTo(-3.4 * s, 6 * s); c.closePath();
+  c.fill();
+  c.strokeStyle = '#7a4a12'; c.lineWidth = 1.6 * s; c.stroke();
+  c.strokeStyle = '#f0a630'; c.lineWidth = 1.3 * s;
+  c.beginPath(); c.moveTo(-2.4 * s, 4 * s); c.lineTo(-1.2 * s, -3 * s); c.lineTo(0, -1 * s); c.lineTo(1.2 * s, -3 * s); c.lineTo(2.4 * s, 4 * s); c.stroke();
+  c.fillStyle = '#6b7480';
+  c.beginPath(); rr(c, -3.6 * s, 6.4 * s, 7.2 * s, 2.4 * s, 1 * s); c.fill();
+  c.beginPath(); rr(c, -3 * s, 9.2 * s, 6 * s, 2.2 * s, 1 * s); c.fill();
+  c.fillStyle = 'rgba(255,255,255,0.9)';
+  c.beginPath(); c.ellipse(-3.4 * s, -6.6 * s, 1.6 * s, 2.8 * s, -0.5, 0, Math.PI * 2); c.fill();
+  // FREE tag
+  c.fillStyle = '#5cbf3a';
+  c.beginPath(); rrc(c, 0, 21 * s, 30 * s, 12 * s, 6 * s); c.fill();
+  c.strokeStyle = '#2f7a1c'; c.lineWidth = 1.2 * s; c.stroke();
+  text(c, 'FREE', 0, 21.5 * s, 8.5 * s, '#ffffff', { font: 'bold' });
+  c.restore();
+}

@@ -9,6 +9,12 @@ import { view } from '../core/view';
 import { rng } from '../core/draw';
 import type { Bench, RT } from '../scenes/bench';
 import { SCREW_R } from '../content/device';
+import { tierOf } from '../content/meta';
+
+/** Workbench upgrades: cutting mat, lamp, desk wood (index = tier). */
+const MAT_COLORS = ['#2f5189', '#2f7a5e', '#2f7a5e', '#2a6a5a'];
+const LAMP_COLORS = [0x2c3a5c, 0x2c3a5c, 0xb8893a, 0xb8893a];
+const WOOD_COLORS = ['#6e4630', '#6e4630', '#6e4630', '#4a2c1e'];
 
 const v = new THREE.Vector3();
 const X = new THREE.Vector3(1, 0, 0);
@@ -19,6 +25,7 @@ const SCREEN_UP = new THREE.Vector3(0, Math.sin(TILT), -Math.cos(TILT));
 const TO_CAMERA = new THREE.Vector3(0, Math.cos(TILT), Math.sin(TILT));
 const qa = new THREE.Quaternion(), qb = new THREE.Quaternion(), qc = new THREE.Quaternion();
 const m4 = new THREE.Matrix4();
+const box3 = new THREE.Box3();
 
 /** How deep the rounded underside of a one-faced gadget is. */
 function bellyOf(round: number | undefined, thick: number): number {
@@ -266,10 +273,12 @@ export class Bench3D {
     const m = this.models.get(p)!;
     const st = this.stack(p);
     const fromDevice = p.state === 'in';
-    const y = this.smoothY(p, (fromDevice ? st.elev * p.sc : 0) + lift * 46);
+    const fx = Math.max(-1, Math.min(1, p.flipX));
+    // a two-faced base turned over rests on its front body: lift it by that body's height
+    const over = m.dual && !fromDevice ? st.thick * p.sc * (1 - fx) / 2 : 0;
+    const y = this.smoothY(p, (fromDevice ? st.elev * p.sc : 0) + lift * 46 + over);
     m.group.scale.setScalar(p.sc * (1 + p.pop * 0.1));
     this.place(m.group, p.x, p.y, y, st.thick * p.sc);
-    const fx = Math.max(-1, Math.min(1, p.flipX));
     // carried parts swing with the drag: the leading side dips
     const t = this.tilt.get(p) ?? { x: p.x, y: p.y, rx: 0, rz: 0 };
     const vx = p.x - t.x, vy = p.y - t.y;
@@ -304,18 +313,21 @@ export class Bench3D {
   paint(p: RT, m: PartModel, inDevice: boolean): void {
     const b = this.b;
     const ds = b.ds(p, inDevice);
+    // a base turned over for cleaning shows its real back face
+    m.showBack = !inDevice && m.dual && p.flipX < 0.99;
+    if (m.showBack) m.paint({ ...ds, view: 'B', inDevice: true }, `B|out|${ds.broken}|${p.fixed}|${p.dirtVer}|${p.side}`, (c) => b.overlays(c, p, 1));
     if (inDevice && b.L.device.hasBack) {
       // every face is real geometry: paint each part as its own side, both faces of the base
       if (m.dual) {
         const dsB = { ...ds, view: 'B' as const };
         const animB = b.power > 0 ? Math.floor(b.time * 12) : 0;
-        m.paint(dsB, `B|${ds.broken}|${p.fixed}|${p.dirtVer}|${p.side}|${p.seen}|${p.state}|${animB}`, (c) => b.overlays(c, p));
+        m.paint(dsB, `B|${ds.broken}|${p.fixed}|${p.dirtVer}|${p.side}|${p.seen}|${p.state}|${animB}`, (c) => b.overlays(c, p, 1));
       }
       ds.view = p.def.side === 'B' ? 'B' : 'F';
     }
     const animBucket = b.power > 0 ? Math.floor(b.time * 12) : 0;
     const key = `${ds.view}|${inDevice}|${ds.broken}|${p.fixed}|${p.dirtVer}|${p.side}|${p.seen}|${p.state}|${animBucket}`;
-    m.paint(ds, key, (c) => b.overlays(c, p));
+    m.paint(ds, key, (c) => b.overlays(c, p, 0));
   }
 
   // ---------------- the desk ----------------
@@ -323,13 +335,14 @@ export class Bench3D {
   /** Wood desk, cutting mat and the props around it, laid out from screen anchors. */
   layoutDesk(): void {
     const { W, H, U, top } = view;
-    const key = `${W}x${H}:${top}`;
+    const tier = tierOf('workbench');
+    const key = `${W}x${H}:${top}:${tier}`;
     if (key === this.deskKey) return;
     this.deskKey = key;
     for (const ch of [...this.desk.children]) disposeObject(ch);
     const g = this.desk;
     const S = Math.max(W, H);
-    const tex = woodTexture(512, 512, 6, '#6e4630');
+    const tex = woodTexture(512, 512, 6, WOOD_COLORS[tier]);
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set((S * 4) / (140 * U), (S * 4) / (140 * U));
     const wood = new THREE.Mesh(new THREE.PlaneGeometry(S * 4, S * 4), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.55 }));
@@ -342,7 +355,7 @@ export class Bench3D {
     const far = toWorld(18 * U, my, 0, new THREE.Vector3());
     const near = toWorld(W / 2, H + 40 * U, 0, new THREE.Vector3());
     const mw = Math.abs(far.x) * 2, md = near.z - far.z;
-    const mat = makeMat(mw, md, 32 * U);
+    const mat = makeMat(mw, md, 32 * U, MAT_COLORS[tier]);
     mat.position.set(0, mat.position.y, far.z + md / 2);
     g.add(mat);
     const put = (o: THREE.Object3D, sx: number, sy: number, sc: number, ry = 0) => {
@@ -354,7 +367,7 @@ export class Bench3D {
     };
     put(makePenCup(), 30 * U, my + 100 * U, U * 1.25, 0.6);
     put(makeFrame(), W / 2 - 40 * U, top + 40 * U, U * 1.1, -0.15);
-    put(makeLamp(), W - 26 * U, my + 78 * U, U * 1.3, -0.55);
+    put(makeLamp(LAMP_COLORS[tier]), W - 26 * U, my + 78 * U, U * 1.3, -0.55);
     put(makeMug(), W - 36 * U, H - 58 * U, U * 1.2, 2.2);
   }
 
@@ -467,6 +480,8 @@ export class Bench3D {
   }
   pad: THREE.Group | null = null;
   padKey = '';
+  /** Height of the carried screwdriver's tip, eased frame to frame. */
+  heldTip = 0;
 
   placeDriver(): THREE.Group {
     const b = this.b;
@@ -485,7 +500,15 @@ export class Bench3D {
         if (dd < bd) { bd = dd; best = p; }
       }
       if (best) tipY = this.topWorldY(best);
-    } else if (d.held) tipY = this.devTop * b.k + 10;
+    } else if (d.held) {
+      // carried over the gadget it hovers just above its highest point, so it never
+      // dips into the body; over the mat it comes down. Eased, so it glides between.
+      const over = rayAt(d.x, d.y).intersectObject(this.devRoot, true).length > 0;
+      const want = over ? box3.setFromObject(this.devRoot).max.y + 6 * s : 3 * s;
+      this.heldTip += (want - this.heldTip) * 0.3;
+      tipY = this.heldTip;
+    }
+    if (!d.held && d.stand <= 0.02 && !d.busy) this.heldTip = tipY;
     const dir = new THREE.Vector3(Math.cos(d.ang), 0.08, Math.sin(d.ang)).normalize();
     dir.lerp(UP, d.stand).normalize();
     const q = new THREE.Quaternion().setFromUnitVectors(X, dir);

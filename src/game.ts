@@ -1,6 +1,8 @@
 // Chill Fix Corner — a cozy repair-shop game. One level = one customer:
 // they tell their story at the counter, you take the gadget apart on the
 // bench, repair + clean it, rebuild it, and hand it back for payment.
+// Around that: shop upgrades bought with the earnings, a collection with
+// albums and keepsakes, and a second chapter after the street party.
 //
 // The `FalconGame` contract at the bottom is how the studio layer drives it.
 
@@ -12,15 +14,19 @@ import '@fontsource/baloo-2/vietnamese-800.css';
 import { createFalconEvents, type FalconGame } from './falcon-game';
 import { canvas, ctx, view, resize, beginFrame } from './core/view';
 import { updateTweens, clearTweens, tween, ease } from './core/tween';
-import { updateFx, drawFx, drawToasts, clearFx } from './core/fx';
+import { updateFx, drawFx, drawToasts, clearFx, toast } from './core/fx';
 import { unlockAudio, pauseAudio, audioSettings } from './core/audio';
-import { LEVELS, type Level } from './content/story';
+import { LEVELS, CHAPTER1, type Level } from './content/story';
 import type { DeviceDef } from './content/device';
-import { Counter } from './scenes/counter';
+import { Counter, type CounterLook } from './scenes/counter';
 import { Bench } from './scenes/bench';
 import { Settings } from './scenes/settings';
 import { Collection, markRepaired, loadCollection } from './scenes/collection';
 import { Results, type ResultKind } from './scenes/results';
+import { Shop } from './scenes/shop';
+import { diagLevelFor } from './scenes/diagnosis';
+import { SHOP, TRACKS, served, takeNewMemories, tierOf, giftsOwned, shopHasNews, resetMeta } from './content/meta';
+import { t, tr } from './core/i18n';
 import { noteFrame } from './three/stage';
 
 export const LEVEL_COUNT = LEVELS.length;
@@ -90,9 +96,39 @@ let levelEarned = 0;
 const settings = new Settings(
   () => startLevel(level),
   () => { /* nothing */ },
+  () => clearData(),
 );
 
-const collection = new Collection(LEVELS);
+/** Settings → Clear data: cash, repairs, upgrades and keepsakes gone; back to the first customer. */
+function clearData(): void {
+  try {
+    localStorage.removeItem(CASH_KEY);
+    localStorage.removeItem('chillfix_collection');
+  } catch { /* storage blocked */ }
+  resetMeta();
+  cash = 5;
+  newMemories = [];
+  memoryNews = [];
+  shopNews = false;
+  startLevel(0);
+  setTimeout(() => toast(t('clearDone'), view.W / 2, view.H * 0.3, 16 * view.U, 2.2), 600);
+}
+
+const collection = new Collection(LEVELS.slice(0, CHAPTER1));
+
+const shop = new Shop({
+  money: () => cash,
+  pay: (n) => {
+    cash -= n; saveCash(); pulse.v = 1;
+    return () => { cash += n; saveCash(); };
+  },
+  cashPulse: () => pulse.v,
+  done: () => loadCollection(),
+  onBought: () => counter?.refreshLook(),
+});
+
+/** A track opens once enough customers have been served. */
+const shopOpen = () => served(loadCollection()) >= SHOP.workbench.after;
 
 const results = new Results({
   onContinue: () => {
@@ -100,19 +136,23 @@ const results = new Results({
     startLevel(results.kind === 'end' ? 0 : level + 1);
   },
   onCollection: () => collection.show(level),
+  onShop: () => shop.show(),
 });
 
 function showResults(): void {
   const L = LEVELS[level];
   const last = level === LEVEL_COUNT - 1;
   const dayEnds = last || LEVELS[level + 1].day !== L.day;
-  const kind: ResultKind = last ? 'end' : dayEnds ? 'day' : 'next';
+  const kind: ResultKind = last ? 'end' : level === CHAPTER1 - 1 ? 'chapter' : dayEnds ? 'day' : 'next';
   const done = loadCollection();
   const today = LEVELS.map((x, i) => ({ L: x, i }))
     .filter(({ L: x, i }) => x.day === L.day && i <= level && done[i])
     .map(({ L: x, i }) => ({ L: x, earned: done[i].earned }));
-  results.show(L, levelEarned, kind, today);
+  results.show(L, levelEarned, kind, today, shopOpen(), newMemories);
 }
+
+/** Keepsakes the last customer unlocked, announced once on the result card. */
+let newMemories: ReturnType<typeof takeNewMemories> = [];
 
 function counterHost(mode: 'arrive' | 'leave') {
   return {
@@ -121,8 +161,22 @@ function counterHost(mode: 'arrive' | 'leave') {
     cashPulse: () => pulse.v,
     openSettings: () => settings.show(),
     openCollection: () => collection.show(),
+    openShop: () => shop.show(),
+    look: () => counterLook(),
     showDay: mode === 'arrive' && (level === 0 || LEVELS[level - 1].day !== LEVELS[level].day),
     onDone: () => (mode === 'arrive' ? goBench() : finishLevel()),
+  };
+}
+
+/** What the counter wears: upgrade tiers, gifts, and whether the shop sign shows. */
+function counterLook(): CounterLook {
+  const done = loadCollection();
+  return {
+    shopOpen: served(done) >= SHOP.workbench.after,
+    news: shopHasNews(cash, done),
+    counter: tierOf('counter'),
+    decor: tierOf('decor'),
+    gifts: giftsOwned(done),
   };
 }
 
@@ -131,7 +185,9 @@ function goBench(): void {
   bench = new Bench(L, {
     money: () => cash,
     spend: (n) => { cash = Math.max(0, cash - n); saveCash(); pulse.v = 1; },
-    tutorial: level === 0,
+    // the first two gadgets teach; after that the bulb shows the way on request
+    tutorial: level < 2,
+    diagnose: diagLevelFor(level),
     cashPulse: () => pulse.v,
     openSettings: () => settings.show(),
     onPacked: () => goLeave(),
@@ -162,11 +218,21 @@ function finishLevel(): void {
   won = true;
   playing = false;
   scene = 'idle';
+  const before = served(loadCollection());
   markRepaired(level, levelEarned);
+  newMemories = takeNewMemories(loadCollection());
+  const after = served(loadCollection());
+  // a shop track just opened: say so once, on the way to the next customer
+  if (TRACKS.some((k) => before < SHOP[k].after && after >= SHOP[k].after)) shopNews = true;
   events.emit('win');
   // without a studio layer nobody else moves the game on: show our own card
   if (!studioRunsFlow()) showResults();
+  else memoryNews = newMemories.map((m) => `${m.icon} ${t('newMemory', tr(m.name))}`);
 }
+
+let shopNews = false;
+/** Keepsake news for when the studio layer showed its own win popup instead of ours. */
+let memoryNews: string[] = [];
 
 function startLevel(index: number): void {
   level = Math.max(0, Math.min(LEVEL_COUNT - 1, Math.floor(index)));
@@ -176,6 +242,11 @@ function startLevel(index: number): void {
   settings.open = 0;
   results.hide();
   collection.shown = false;
+  shop.shown = false;
+  const news = [...memoryNews, ...(shopNews ? [t('shopOpens')] : [])];
+  shopNews = false;
+  memoryNews = [];
+  news.forEach((s, i) => setTimeout(() => toast(s, view.W / 2, view.H * 0.3 + i * 40 * view.U, 15 * view.U, 2.8), 900));
   levelEarned = 0;
   bench?.dispose();
   bench = null;
@@ -187,7 +258,7 @@ function startLevel(index: number): void {
   won = false;
   // The counter is the first beat of play — the level's clock starts here.
   // two-gadget days are the hard ones (never shown to the player, only reported)
-  const hardDay = LEVELS.filter((x) => x.day === LEVELS[level].day).length > 1;
+  const hardDay = LEVELS.filter((x) => x.day === LEVELS[level].day).length > 1 || level === LEVEL_COUNT - 1;
   events.emit('levelStart', { index: level, difficulty: hardDay ? 'hard' : level < 3 ? 'easy' : 'normal', levelId: `${LEVELS[level].device.id}-${level + 1}` });
 }
 
@@ -209,6 +280,7 @@ function frame(now: number): void {
   settings.update(dt);
   results.update(dt);
   collection.update(dt);
+  shop.update(dt);
   render();
   requestAnimationFrame(frame);
 }
@@ -231,6 +303,7 @@ function render(): void {
   results.draw(ctx);
   settings.draw(ctx);
   collection.draw(ctx);
+  shop.draw(ctx);
 }
 
 function drawIdle(): void {
@@ -254,6 +327,7 @@ canvas.addEventListener('pointerdown', (e) => {
   activePointer = e.pointerId;
   canvas.setPointerCapture?.(e.pointerId);
   const [x, y] = pos(e);
+  if (shop.down(x, y)) return;
   if (collection.down(x, y)) return;
   if (settings.down(x, y)) return;
   if (results.down(x, y)) return;
@@ -272,7 +346,8 @@ const end = (e: PointerEvent) => {
   if (e.pointerId !== activePointer) return;
   activePointer = -1;
   const [x, y] = pos(e);
-  if (collection.up()) return;
+  if (shop.up(x, y)) return;
+  if (collection.up(x, y)) return;
   if (results.up(x, y)) return;
   if (paused) return;
   if (scene === 'bench') bench?.up(x, y);
@@ -288,6 +363,7 @@ if (import.meta.env.DEV) {
     get scene() { return scene; },
     get results() { return results; },
     get collection() { return collection; },
+    get shop() { return shop; },
     get pan() { return pan.active; },
     setCash: (n: number) => { cash = n; },
   };

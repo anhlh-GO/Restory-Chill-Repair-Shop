@@ -1,6 +1,7 @@
 // The card after a customer leaves, when no studio layer runs the flow:
-// "Fixed it!" with the gadget, or the end-of-day tally, or the finale.
-// Buttons: carry on (next customer / next day / play again) and the collection.
+// "Fixed it!" with the gadget, or the end-of-day tally, the end of chapter 1,
+// or the finale. Buttons: carry on (next customer / next day / day 16 / play
+// again), improve the shop (end of a day, once it has opened) and the collection.
 
 import { type C, rrc, text, button } from '../core/draw';
 import { view } from '../core/view';
@@ -9,12 +10,14 @@ import { emit } from '../core/fx';
 import { t, tr } from '../core/i18n';
 import type { Level } from '../content/story';
 import { showcaseThumb } from '../three/showcase3d';
+import type { MemoryDef } from '../content/meta';
 
-export type ResultKind = 'next' | 'day' | 'end';
+export type ResultKind = 'next' | 'day' | 'chapter' | 'end';
 
 export interface ResultHost {
   onContinue(): void;
   onCollection(): void;
+  onShop(): void;
 }
 
 export class Results {
@@ -25,6 +28,9 @@ export class Results {
   L!: Level;
   earned = 0;
   today: { L: Level; earned: number }[] = [];
+  /** Offer the shop button (end of a day, once the shop has opened). */
+  shop = false;
+  memories: MemoryDef[] = [];
   pic: HTMLCanvasElement | null = null;
   press = -1;
   time = 0;
@@ -33,8 +39,10 @@ export class Results {
     this.host = host;
   }
 
-  show(L: Level, earned: number, kind: ResultKind, today: { L: Level; earned: number }[]): void {
+  show(L: Level, earned: number, kind: ResultKind, today: { L: Level; earned: number }[], shop = false, memories: MemoryDef[] = []): void {
     this.L = L;
+    this.shop = shop && kind !== 'next' && kind !== 'end';
+    this.memories = memories;
     this.earned = earned;
     this.kind = kind;
     this.today = today;
@@ -60,17 +68,23 @@ export class Results {
   rect() {
     const { W, H, U } = view;
     const w = Math.min(W - 36 * U, 330 * U);
-    const h = this.kind === 'day' ? Math.min(H - 80 * U, 470 * U + Math.max(0, this.today.length - 2) * 22 * U) : 420 * U;
-    return { x: W / 2, y: H * 0.47, w, h };
+    const extra = (this.shop ? 52 * U : 0) + this.memories.length * 22 * U;
+    const h = (this.kind === 'day' || this.kind === 'chapter' ? Math.min(H - 80 * U, (this.kind === 'chapter' ? 500 : 470) * U + Math.max(0, this.today.length - 2) * 22 * U) : 420 * U) + extra;
+    return { x: W / 2, y: H * 0.47, w, h: Math.min(h, H - 40 * U) };
   }
 
   buttons() {
     const { U } = view;
     const r = this.rect();
-    return [
-      { x: r.x, y: r.y + r.h / 2 - 96 * U, w: 220 * U, h: 50 * U },
-      { x: r.x, y: r.y + r.h / 2 - 38 * U, w: 200 * U, h: 40 * U },
+    const out = [
+      { x: r.x, y: r.y + r.h / 2 - 96 * U, w: 220 * U, h: 50 * U, id: 'go' },
+      { x: r.x, y: r.y + r.h / 2 - 38 * U, w: 200 * U, h: 40 * U, id: 'collection' },
     ];
+    if (this.shop) {
+      out[0].y -= 52 * U;
+      out.splice(1, 0, { x: r.x, y: r.y + r.h / 2 - 90 * U, w: 200 * U, h: 40 * U, id: 'shop' });
+    }
+    return out;
   }
 
   draw(c: C): void {
@@ -92,11 +106,12 @@ export class Results {
     c.fillStyle = '#fbf2dc';
     c.beginPath(); rrc(c, 0, 0, r.w - 12 * U, r.h - 12 * U, 14 * U); c.fill();
     const top = -r.h / 2;
-    const title = this.kind === 'day' ? t('dayOver', this.L.day) : this.kind === 'end' ? t('allDone') : t('fixedIt');
-    text(c, title, 0, top + 38 * U, this.kind === 'end' ? 21 * U : 26 * U, '#3b2a1e', { font: 'bold' });
+    const title = this.kind === 'day' ? t('dayOver', this.L.day) : this.kind === 'end' ? t('allDone') : this.kind === 'chapter' ? t('chapterDone') : t('fixedIt');
+    const big = this.kind === 'end' || this.kind === 'chapter';
+    text(c, title, 0, top + 38 * U, big ? 21 * U : 26 * U, '#3b2a1e', { font: 'bold' });
     let y = top + 64 * U;
-    if (this.kind === 'end') {
-      text(c, t('allDoneSub'), 0, y, 15 * U, '#7a5a3a');
+    if (big) {
+      text(c, t(this.kind === 'end' ? 'allDoneSub' : 'chapterDoneSub'), 0, y, 14 * U, '#7a5a3a', { maxW: r.w - 30 * U });
       y += 10 * U;
     }
     // the gadget on a little spotlight
@@ -113,7 +128,7 @@ export class Results {
     y = py + ps / 2 + 10 * U;
     text(c, tr(this.L.device.name), 0, y, 16 * U, '#3b2a1e', { font: 'bold' });
     y += 26 * U;
-    if (this.kind === 'day') {
+    if (this.kind === 'day' || this.kind === 'chapter') {
       text(c, t('todayFixed'), 0, y, 14 * U, '#7a5a3a', { font: 'bold' });
       y += 22 * U;
       let sum = 0;
@@ -129,6 +144,7 @@ export class Results {
       c.setLineDash([]);
       text(c, t('todayEarned'), -r.w / 2 + 34 * U, y + 8 * U, 16 * U, '#3b2a1e', { align: 'left', font: 'bold' });
       text(c, `$${sum}`, r.w / 2 - 34 * U, y + 8 * U, 18 * U, '#2f7a2f', { align: 'right', font: 'bold' });
+      y += 18 * U;
     } else {
       // the coin pill
       const pulse = 1 + Math.sin(this.time * 4) * 0.03;
@@ -137,17 +153,25 @@ export class Results {
       c.scale(pulse, pulse);
       c.fillStyle = '#7ccf3c';
       c.beginPath(); rrc(c, 0, 0, 120 * U, 34 * U, 17 * U); c.fill();
-      text(c, `+ $${this.earned}`, 0, 1, 19 * U, '#fff', { font: 'bold' });
+      text(c, `+ ${this.earned}`, 0, 1, 19 * U, '#fff', { font: 'bold' });
       c.restore();
+      y += 10 * U;
+    }
+    // keepsakes this customer unlocked
+    for (const m of this.memories) {
+      y += 22 * U;
+      text(c, `${m.icon} ${t('newMemory', tr(m.name))}`, 0, y, 14 * U, '#b0602a', { font: 'bold', maxW: r.w - 30 * U });
     }
     c.restore();
     // buttons (screen space, so hit-tests match)
     c.save();
     c.globalAlpha = Math.min(1, k * 1.3);
-    const [b1, b2] = this.buttons();
-    const main = this.kind === 'day' ? t('nextDayBtn') : this.kind === 'end' ? t('playAgain') : t('nextCustomerBtn');
-    button(c, b1.x, b1.y, b1.w, b1.h, main, this.kind === 'end' ? '#4a90e2' : '#7ccf3c', this.press === 0, 19 * U);
-    button(c, b2.x, b2.y, b2.w, b2.h, t('collectionBtn'), '#d99a3f', this.press === 1, 16 * U);
+    const main = this.kind === 'day' ? t('nextDayBtn') : this.kind === 'end' ? t('playAgain') : this.kind === 'chapter' ? t('chapterNext') : t('nextCustomerBtn');
+    this.buttons().forEach((b, i) => {
+      if (b.id === 'go') button(c, b.x, b.y, b.w, b.h, main, this.kind === 'end' ? '#4a90e2' : '#7ccf3c', this.press === i, 19 * U);
+      else if (b.id === 'shop') button(c, b.x, b.y, b.w, b.h, t('improveShop'), '#4a90e2', this.press === i, 16 * U);
+      else button(c, b.x, b.y, b.w, b.h, t('collectionBtn'), '#d99a3f', this.press === i, 16 * U);
+    });
     c.restore();
   }
 
@@ -166,7 +190,8 @@ export class Results {
     if (i < 0) return true;
     const b = this.buttons()[i];
     if (Math.abs(x - b.x) > b.w / 2 + 8 || Math.abs(y - b.y) > b.h / 2 + 8) return true;
-    if (i === 0) this.host.onContinue();
+    if (b.id === 'go') this.host.onContinue();
+    else if (b.id === 'shop') this.host.onShop();
     else this.host.onCollection();
     return true;
   }

@@ -10,8 +10,9 @@ import { t, tr } from '../core/i18n';
 import type { Level, PuzzleSpec } from '../content/story';
 import type { PartDef, DrawState } from '../content/device';
 import { SCREW_R } from '../content/device';
-import { drawMat, drawBox, drawDish, drawScrewdriver, drawBrush, drawSponge, drawCash, drawNotepad, drawGear, badge } from './desk';
+import { drawMat, drawBox, drawDish, drawScrewdriver, drawBrush, drawSponge, drawCash, drawNotepad, drawGear, drawBulbBtn, badge } from './desk';
 import { Minigame } from './minigames';
+import { Diagnosis, type DiagLevel } from './diagnosis';
 import { Bench3D } from '../three/bench3d';
 
 type DragKind = 'part' | 'driver' | 'tool' | 'spin' | 'none';
@@ -48,6 +49,8 @@ export interface BenchHost {
   money(): number;
   spend(n: number): void;
   tutorial: boolean;
+  /** Quick Diagnosis after unboxing (null: straight to taking apart). */
+  diagnose: DiagLevel | null;
   onPacked(bought: number): void;
   openSettings(): void;
   cashPulse(): number;
@@ -63,6 +66,8 @@ interface Drag {
   sx: number; sy: number; // pointer start
   ox: number; oy: number; // grab offset
   px: number; py: number; // last pointer
+  /** Where the carried part is heading: it glides there, smoothing out uneven touch events. */
+  tx?: number; ty?: number;
   moved: boolean;
   from: 'device' | 'tray';
 }
@@ -80,6 +85,9 @@ export class Bench {
   spinAt = 0; // when the finger last moved
   time = 0;
   idle = 0;
+  /** Seconds left of a hint the player asked for with the bulb. */
+  hintT = 0;
+  bulbPress = 0;
   boxOpen = 0;
   boxY = 0;
   boxAlpha = 1;
@@ -96,6 +104,7 @@ export class Bench {
   dishScrews = 0;
   bought = 0;
   mini: Minigame | null = null;
+  diag: Diagnosis | null = null;
   focus: RT | null = null;
   toolPos = { x: 0, y: 0, rest: true, scrub: 0 };
   driver = { x: 0, y: 0, ang: 0.95, stand: 0, twist: 0, prog: 0, busy: false, held: false, rest: true };
@@ -121,7 +130,7 @@ export class Bench {
         def, state: 'in', anim: false, x: 0, y: 0, sc: 1, rot: 0, lift: 0, alpha: 1, flipX: 1,
         slot: -1, dirt: null, dirtVer: 0, side: 0, broken: this.jobs.has(def.id), fixed: false, seen: false, wig: 0, pop: 0, spot: null, tz: 0,
       };
-      if (level.dirty.includes(def.id)) rt.dirt = [makeDirt(def, r), makeDirt(def, r)];
+      if (level.dirty.includes(def.id)) rt.dirt = this.twoFaced(def) ? [makeDirt(def, r), makeDirt(def, r)] : [makeDirt(def, r)];
       return rt;
     });
     this.resetDriver();
@@ -237,6 +246,14 @@ export class Bench {
     for (const p of this.parts) if (p.state === 'in' && !p.seen && this.visibleOnSide(p) && this.blockers(p).length === 0) p.seen = true;
     this.time += dt;
     this.idle += dt;
+    this.hintT = Math.max(0, this.hintT - dt);
+    const dg = this.drag;
+    if (dg.kind === 'part' && dg.rt && dg.tx !== undefined && dg.ty !== undefined) {
+      const k = 1 - Math.exp(-dt * 48);
+      dg.rt.x += (dg.tx - dg.rt.x) * k;
+      dg.rt.y += (dg.ty - dg.rt.y) * k;
+    }
+    this.bulbPress = Math.max(0, this.bulbPress - dt * 5);
     this.listOpen += ((this.listShown ? 1 : 0) - this.listOpen) * Math.min(1, dt * 14);
     this.notePulse = Math.max(0, this.notePulse - dt * 3);
     this.shake = Math.max(0, this.shake - dt * 4);
@@ -245,6 +262,7 @@ export class Bench {
       p.pop = Math.max(0, p.pop - dt * 3);
     }
     if (this.mini) this.mini.update(dt);
+    if (this.diag) this.diag.update(dt);
     if (this.drag.kind !== 'spin' && Math.abs(this.spinVx) + Math.abs(this.spinVy) > 0.05) {
       this.g3.turn(this.spinVx, this.spinVy);
       const f = Math.pow(0.04, dt);
@@ -394,7 +412,9 @@ export class Bench {
     if (this.focus) this.focusUI(c);
     this.drawUI(c);
     c.restore();
+    if (this.diag) this.diag.draw(c);
     if (this.mini) this.mini.draw(c);
+    this.drawBulb(c);
   }
 
   drawUI(c: C): void {
@@ -500,12 +520,12 @@ export class Bench {
     if (this.phase !== 'clean' || !p.dirt) return;
     const { W, H, U } = view;
     const tool = p.def.tool ?? 'brush';
-    const spots = p.dirt[Math.min(p.side, 1)];
+    const spots = p.dirt[Math.min(p.side, p.dirt.length - 1)];
     const done = spots.reduce((s, q) => s + (1 - q.a), 0) / spots.length;
     const y = H * 0.84;
     c.fillStyle = 'rgba(28,32,44,0.85)';
     c.beginPath(); rrc(c, W / 2, y, 200 * U, 30 * U, 15 * U); c.fill();
-    text(c, `${tool === 'brush' ? '🖌' : '🧽'} · ${p.side + 1}/2`, W / 2 - 62 * U, y + 1, 14 * U, '#f4f1ea');
+    text(c, p.dirt.length > 1 ? `${tool === 'brush' ? '🖌' : '🧽'} · ${p.side + 1}/${p.dirt.length}` : tool === 'brush' ? '🖌' : '🧽', W / 2 - 62 * U, y + 1, 14 * U, '#f4f1ea');
     c.fillStyle = '#3a404c';
     c.beginPath(); rrc(c, W / 2 + 24 * U, y, 80 * U, 8 * U, 4 * U); c.fill();
     c.fillStyle = '#7ccf3c';
@@ -598,7 +618,9 @@ export class Bench {
     this.drawHUD(c);
     this.drawHints(c);
     c.restore();
+    if (this.diag) this.diag.draw(c);
     if (this.mini) this.mini.draw(c);
+    this.drawBulb(c);
   }
 
   ds(rt: RT | null, inDevice = false): DrawState {
@@ -675,11 +697,19 @@ export class Bench {
     }
   }
 
-  /** Dirt, scorch marks and badges drawn in part-local space (already scaled). */
-  overlays(c: C, p: RT): void {
-    if (p.dirt) {
-      const spots = p.dirt[Math.min(p.side, 1)];
+  /** A part you can turn over and find a second real face on: the base of a two-faced gadget. */
+  twoFaced(def: PartDef): boolean {
+    return !!this.L.device.hasBack && def.z === 0;
+  }
+
+  /** Dirt, scorch marks and badges drawn in part-local space (already scaled).
+   *  `face` 1 paints the back face's canvas, which is mirrored. */
+  overlays(c: C, p: RT, face?: number): void {
+    const f = face ?? (p.dirt ? Math.min(p.side, p.dirt.length - 1) : 0);
+    if (p.dirt && p.dirt[f]) {
+      const spots = p.dirt[f];
       c.save();
+      if (face === 1) c.scale(-1, 1);
       c.clip(p.def.shape);
       // grime film
       const left = spots.reduce((s, q) => s + q.a, 0) / Math.max(1, spots.length);
@@ -770,12 +800,12 @@ export class Bench {
     if (tool === 'brush') drawBrush(c, tp.x, tp.y, U * 1.15, tp.rest ? 0 : -0.15, tp.scrub);
     else drawSponge(c, tp.x, tp.y, U * 1.2, tp.rest ? 0 : -0.1, tp.scrub);
     // progress pill
-    const spots = p.dirt[Math.min(p.side, 1)];
+    const spots = p.dirt[Math.min(p.side, p.dirt.length - 1)];
     const done = spots.reduce((s, q) => s + (1 - q.a), 0) / spots.length;
     const y = H * 0.84;
     c.fillStyle = 'rgba(28,32,44,0.85)';
     c.beginPath(); rrc(c, W / 2, y, 200 * U, 30 * U, 15 * U); c.fill();
-    text(c, `${tool === 'brush' ? '🖌' : '🧽'} · ${p.side + 1}/2`, W / 2 - 62 * U, y + 1, 14 * U, '#f4f1ea');
+    text(c, p.dirt.length > 1 ? `${tool === 'brush' ? '🖌' : '🧽'} · ${p.side + 1}/${p.dirt.length}` : tool === 'brush' ? '🖌' : '🧽', W / 2 - 62 * U, y + 1, 14 * U, '#f4f1ea');
     c.fillStyle = '#3a404c';
     c.beginPath(); rrc(c, W / 2 + 24 * U, y, 80 * U, 8 * U, 4 * U); c.fill();
     c.fillStyle = '#7ccf3c';
@@ -852,7 +882,7 @@ export class Bench {
 
   suggestion(): { from?: { x: number; y: number }; to?: { x: number; y: number }; tap?: { x: number; y: number }; dbl?: boolean; msg: string } | null {
     const U = view.U;
-    if (this.mini || this.phase === 'box' || this.phase === 'done' || this.phase === 'pack') {
+    if (this.mini || this.diag || this.phase === 'box' || this.phase === 'done' || this.phase === 'pack') {
       if (this.phase === 'box' && this.boxOpen === 0) return { tap: { x: this.center.x, y: this.center.y }, msg: t('tapBox') };
       return null;
     }
@@ -898,11 +928,12 @@ export class Bench {
 
   drawHints(c: C): void {
     const U = view.U;
-    const wait0 = this.host.tutorial ? 1.6 : 4.5;
-    if (this.idle < wait0 || this.drag.kind !== 'none' || this.driver.busy || this.listShown) return;
+    const wait0 = 1.6;
+    const auto = this.host.tutorial && this.idle >= wait0;
+    if ((!auto && this.hintT <= 0) || this.drag.kind !== 'none' || this.driver.busy || this.listShown) return;
     const s = this.suggestion();
     if (!s) return;
-    const a = Math.min(1, (this.idle - wait0) * 3);
+    const a = Math.max(auto ? Math.min(1, (this.idle - wait0) * 3) : 0, Math.min(1, this.hintT * 2));
     c.save();
     c.globalAlpha = a;
     const ph = (this.time * 0.7) % 1;
@@ -927,6 +958,37 @@ export class Bench {
       pill(c, clamp(s.tap.x, 110 * U, view.W - 110 * U), s.tap.y - 50 * U, s.msg, 14 * U, 1);
     }
     c.restore();
+  }
+
+  // ---------------- hint bulb ----------------
+
+  bulbPos(): { x: number; y: number } {
+    const { W, U } = view;
+    return this.mini ? { x: W - 32 * U, y: view.top + 40 * U } : { x: W - 34 * U, y: view.top + 112 * U };
+  }
+
+  /** The bulb shows whenever there is a next step to show. */
+  bulbOn(): boolean {
+    if (this.mini) return this.mini.winT < 0 && !!this.mini.game.hint;
+    return !this.listShown && this.suggestion() !== null;
+  }
+
+  drawBulb(c: C): void {
+    if (!this.bulbOn()) return;
+    const p = this.bulbPos();
+    const idle = this.mini ? this.mini.idle : this.idle;
+    // after a while without progress the bulb glows, inviting a tap
+    const glow = this.host.tutorial ? 0 : clamp((idle - 8) / 2, 0, 1) * (0.6 + 0.4 * Math.sin(this.time * 4));
+    drawBulbBtn(c, p.x, p.y, view.U, glow, this.bulbPress);
+  }
+
+  /** Free hint: show the guide for the step the player is on. */
+  useHint(): void {
+    sfx.tap();
+    haptic(10);
+    this.bulbPress = 1;
+    if (this.mini) { this.mini.hintT = 4.5; this.mini.idle = 0; return; }
+    this.hintT = 4.5;
   }
 
   // ---------------- input ----------------
@@ -983,7 +1045,14 @@ export class Bench {
 
   down(x: number, y: number): void {
     this.idle = 0;
+    const bp = this.bulbPos();
+    if (this.bulbOn() && dist(x, y, bp.x, bp.y) < 26 * view.U) {
+      this.drag = { kind: 'none', sx: x, sy: y, ox: 0, oy: 0, px: x, py: y, moved: false, from: 'device' };
+      this.useHint();
+      return;
+    }
     if (this.mini) { this.mini.down(x, y); return; }
+    if (this.diag) { this.diag.down(x, y); return; }
     const { W, U } = view;
     const top = view.top + 12 * U;
     // HUD: notepad toggles the list; gear opens settings
@@ -1122,6 +1191,7 @@ export class Bench {
 
   move(x: number, y: number): void {
     if (this.mini) { this.mini.move(x, y); return; }
+    if (this.diag) return;
     const U = view.U;
     const dr = this.drag;
     const dx = x - dr.px, dy = y - dr.py;
@@ -1130,8 +1200,7 @@ export class Bench {
     if (dr.kind === 'none') return;
     this.idle = 0;
     if (dr.kind === 'part' && dr.rt) {
-      const p = dr.rt;
-      p.x = x + dr.ox; p.y = y + dr.oy;
+      dr.tx = x + dr.ox; dr.ty = y + dr.oy;
       return;
     }
     if (dr.kind === 'spin') {
@@ -1159,7 +1228,9 @@ export class Bench {
 
   up(x: number, y: number): void {
     if (this.mini) { this.mini.up(x, y); return; }
+    if (this.diag) { this.diag.up(x, y); return; }
     const dr = this.drag;
+    if (dr.kind === 'part' && dr.rt && dr.tx !== undefined && dr.ty !== undefined) { dr.rt.x = dr.tx; dr.rt.y = dr.ty; }
     const U = view.U;
     if (this.doneBtnDown) {
       this.doneBtnDown = false;
@@ -1193,6 +1264,7 @@ export class Bench {
     }
     if (dr.kind === 'driver') {
       this.driver.held = false;
+      this.screwNope = null;
       if (!this.driver.busy) this.driver.rest = true;
     }
     if (dr.kind === 'tool') this.toolPos.rest = true;
@@ -1233,7 +1305,17 @@ export class Bench {
               emit('dust', cc.x, cc.y + this.L.device.h * this.k * 0.4, 12, { color: 'rgba(255,255,255,0.7)', speed: 110, size: 5, life: 0.5 });
               this.phase = 'apart';
               this.notePulse = 1;
-              wait(0.5, () => toast(t('spinHint'), view.W / 2, view.H * 0.64, 14 * view.U, 2.4));
+              const spinHint = () => wait(0.5, () => toast(t('spinHint'), view.W / 2, view.H * 0.64, 14 * view.U, 2.4));
+              if (this.host.diagnose) {
+                this.diag = new Diagnosis(this.L, this.host.diagnose, (right) => {
+                  this.diag = null;
+                  this.idle = 0;
+                  // the culprit gives a little wiggle: that's the one to get to
+                  const p = this.parts.find((q) => q.def.id === this.L.broken);
+                  if (p && right) p.wig = 1;
+                  spinHint();
+                });
+              } else spinHint();
               this.boxOpen = 0;
               this.boxY = 0;
               this.boxScale = 1;
@@ -1337,14 +1419,31 @@ export class Bench {
     const d = this.driver;
     if (d.busy) return;
     const U = view.U;
+    // the nearest screw under the tip, not just the first one in the list
+    let near: RT | null = null, nd = 30 * U;
     for (const p of this.parts) {
       if (p.def.kind !== 'screw' || !this.visibleOnSide(p) || p.anim) continue;
+      if (this.phase === 'apart' ? p.state !== 'in' : p.state !== 'out') continue;
       const h = this.home(p);
-      if (dist(d.x, d.y, h.x, h.y) > 24 * U) continue;
-      if (this.phase === 'apart' && this.canRemove(p) && this.isTopAt(p)) { this.unscrew(p); return; }
-      if (this.phase === 'rebuild' && this.canFit(p) && this.dishScrews > 0) { this.screwIn(p); return; }
+      const dd = dist(d.x, d.y, h.x, h.y);
+      if (dd < nd) { nd = dd; near = p; }
+    }
+    if (!near) { this.screwNope = null; return; }
+    if (this.phase === 'apart' && this.canRemove(near) && this.isTopAt(near)) { this.unscrew(near); return; }
+    if (this.phase === 'rebuild' && this.canFit(near) && this.dishScrews > 0) { this.screwIn(near); return; }
+    // on a screw that can't turn yet: say why, once per screw
+    if (this.phase === 'apart' && this.screwNope !== near) {
+      this.screwNope = near;
+      near.wig = 1;
+      const h = this.home(near);
+      const first = this.blockers(near)[0] ?? this.hitDevice(h.x, h.y);
+      sfx.error();
+      haptic(15);
+      toast(first && first !== near ? t('first', tr(first.def.name)) : t('takeAllApart'), view.W / 2, this.center.y - this.L.device.h * this.k * 0.5 - 26 * U, 14 * U);
     }
   }
+  /** The screw the driver last bumped into without turning it (for one toast, not a stream). */
+  screwNope: RT | null = null;
 
   /** A screw is reachable only if no part with a higher z covers it. */
   isTopAt(p: RT): boolean {
@@ -1515,22 +1614,25 @@ export class Bench {
       sfx.sparkle();
       haptic(20);
       emit('spark', p.x, p.y, 16, { color: ['#fff', '#c8f0ff'], speed: 200, size: 7 });
-      if (p.side === 0) {
-        // flip the part to its other face
+      if (p.side < p.dirt.length - 1) {
+        // turn the part over: its back face comes up, dirty in its own way
         this.toolPos.rest = true;
         this.drag.kind = 'none';
         p.flipX = 0.98;
-        animate(0.5, (k) => {
-          p.flipX = Math.cos(k * Math.PI * 2);
-          if (k >= 0.25) p.side = 1;
-        }, ease.inOutSine, () => { p.flipX = 1; p.side = 1; });
+        tween(p, { lift: 1 }, 0.2, ease.outCubic);
+        animate(0.55, (k) => {
+          p.flipX = Math.cos(k * Math.PI);
+          if (k >= 0.5) p.side = 1;
+        }, ease.inOutSine, () => { p.flipX = -1; p.side = 1; tween(p, { lift: 0.4 }, 0.2, ease.inCubic); });
         sfx.flip();
       } else {
         p.dirt = null;
         this.drag.kind = 'none';
         this.toolPos.rest = true;
         toast(t('spotless'), view.W / 2, p.y + (p.def.h * p.sc) / 2 + 30 * U, 16 * U);
-        wait(0.6, () => {
+        // a part turned over goes back face up before it returns to the mat
+        if (p.flipX < 0) wait(0.25, () => animate(0.4, (k) => { p.flipX = -Math.cos(k * Math.PI); }, ease.inOutSine, () => { p.flipX = 1; }));
+        wait(p.flipX < 0 ? 0.75 : 0.6, () => {
           this.focus = null;
           tween(this.toolPos, { y: view.H + 80 }, 0.25);
           this.toSlot(p, () => {

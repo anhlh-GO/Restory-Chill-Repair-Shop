@@ -1,5 +1,6 @@
 // The shop counter: the customer arrives, tells their story, leaves the box;
-// later comes back, reacts, pays (receipt + PAID stamp).
+// later comes back, reacts, pays (receipt + PAID stamp). The room shows what
+// the shop has become: upgrades bought, album gifts and the regulars' keepsakes.
 
 import { type C, rr, rrc, text, shade, setFont, wrap, rng, star5 } from '../core/draw';
 import { view } from '../core/view';
@@ -13,6 +14,18 @@ import { drawStreet, skyFor } from './city';
 import { drawCash } from './desk';
 import { counter3D } from '../three/counter3d';
 import { drawDaybreak } from './daybreak';
+import { drawWindowDecor, drawCounterDecor, drawShopSign } from './decor';
+import type { Gift } from '../content/meta';
+
+/** What the room wears right now. */
+export interface CounterLook {
+  shopOpen: boolean;
+  /** Something in the shop can be bought: the sign glows. */
+  news: boolean;
+  counter: number;
+  decor: number;
+  gifts: Set<Gift>;
+}
 
 export interface CounterHost {
   money(): number;
@@ -21,6 +34,9 @@ export interface CounterHost {
   openSettings(): void;
   /** The shelf of repaired gadgets. */
   openCollection(): void;
+  /** Improve the shop. */
+  openShop(): void;
+  look(): CounterLook;
   /** arrive: box handed over; leave: customer paid and left. */
   onDone(): void;
   showDay: boolean;
@@ -52,12 +68,14 @@ export class Counter {
   tip = 0;
   blipT = 0;
   ding = 0;
+  look: CounterLook;
 
   constructor(level: Level, mode: 'arrive' | 'leave', host: CounterHost) {
     this.L = level;
     this.mode = mode;
     this.host = host;
     this.lines = mode === 'arrive' ? level.arrive : level.leave;
+    this.look = host.look();
     this.boxOnCounter = mode === 'arrive';
     const r = rng(level.pay * 7 + level.day);
     this.tip = Math.round(1 + r() * 4);
@@ -87,6 +105,9 @@ export class Counter {
       wait(0.5, () => this.next());
     }
   }
+
+  /** After a purchase: wear the new upgrade straight away. */
+  refreshLook(): void { this.look = this.host.look(); }
 
   get layout() {
     const { W, H, U } = view;
@@ -213,12 +234,17 @@ export class Counter {
   /** A little wooden sign on the wall that opens the collection. */
   shelfSign() {
     const { W, U, wallH } = this.layout;
-    return { x: W * 0.48, y: wallH - 30 * U, w: 112 * U, h: 30 * U };
+    return this.look.shopOpen ? { x: W * 0.355, y: wallH - 30 * U, w: 104 * U, h: 30 * U } : { x: W * 0.48, y: wallH - 30 * U, w: 112 * U, h: 30 * U };
   }
 
-  drawShelfSign(c: C): void {
+  /** Its twin, once the shop can be improved. */
+  shopSignRect() {
+    const { W, U, wallH } = this.layout;
+    return { x: W * 0.6, y: wallH - 30 * U, w: 88 * U, h: 30 * U };
+  }
+
+  drawShelfSign(c: C, r = this.shelfSign(), label = t('collectionBtn'), glow = 0): void {
     const { U } = this.layout;
-    const r = this.shelfSign();
     const sway = Math.sin(this.time * 1.6) * 0.03;
     c.save();
     c.translate(r.x, r.y - r.h / 2 - 8 * U);
@@ -230,7 +256,11 @@ export class Counter {
     c.fillStyle = 'rgba(0,0,0,0.3)'; c.beginPath(); rrc(c, 2, 3, r.w, r.h, 7 * U); c.fill();
     c.fillStyle = '#b98552'; c.beginPath(); rrc(c, 0, 0, r.w, r.h, 7 * U); c.fill();
     c.strokeStyle = '#6e4630'; c.lineWidth = 2 * U; c.beginPath(); rrc(c, 0, 0, r.w - 4 * U, r.h - 4 * U, 6 * U); c.stroke();
-    text(c, t('collectionBtn'), 0, 1, 13.5 * U, '#3b2414', { font: 'bold' });
+    if (glow > 0) {
+      c.strokeStyle = `rgba(255,226,120,${glow})`; c.lineWidth = 3 * U;
+      c.beginPath(); rrc(c, 0, 0, r.w + 4 * U, r.h + 4 * U, 9 * U); c.stroke();
+    }
+    text(c, label, 0, 1, 13.5 * U, '#3b2414', { font: 'bold', maxW: r.w - 8 * U });
     c.restore();
   }
 
@@ -240,6 +270,8 @@ export class Counter {
     if (this.afterDay || this.dayCard > 0) return;
     const sign = this.shelfSign();
     if (Math.abs(x - sign.x) < sign.w / 2 + 6 && Math.abs(y - sign.y) < sign.h / 2 + 10) { this.host.openCollection(); return; }
+    const ss = this.shopSignRect();
+    if (this.look.shopOpen && Math.abs(x - ss.x) < ss.w / 2 + 6 && Math.abs(y - ss.y) < ss.h / 2 + 10) { this.host.openShop(); return; }
     if (this.busy) return;
     const line = this.lines[this.li];
     if (!line) return;
@@ -290,6 +322,8 @@ export class Counter {
     // glass reflection
     c.fillStyle = 'rgba(255,255,255,0.06)';
     c.beginPath(); c.moveTo(W * 0.1, winY1); c.lineTo(W * 0.35, winY0 + 30 * U); c.lineTo(W * 0.45, winY0 + 30 * U); c.lineTo(W * 0.2, winY1); c.closePath(); c.fill();
+    // posters, photos and lights the shop has collected
+    drawWindowDecor(c, this.look, W, U, winY0, winY1, this.time);
 
     // wall band with shelf, calendar, clock
     const wg = c.createLinearGradient(0, 0, 0, wallH);
@@ -319,6 +353,7 @@ export class Counter {
     c.textAlign = 'center'; c.textBaseline = 'middle';
     c.fillText(`${hh}${Math.floor(this.time * 2) % 2 ? ':' : ' '}${mm}`, kx, ky + 1);
     this.drawShelfSign(c);
+    if (this.look.shopOpen) this.drawShelfSign(c, this.shopSignRect(), t('shopBtn'), this.look.news ? 0.5 + 0.5 * Math.sin(this.time * 4) : 0);
 
     // the customer
     if (this.custX > -1.15) {
@@ -338,6 +373,8 @@ export class Counter {
     const c3 = counter3D();
     if (c3) c3.render(c, { yC, boxY: this.boxY, boxOn: this.boxOnCounter, ding: this.ding });
     else this.flatCounter(c, W, H, U, yC);
+    drawCounterDecor(c, this.look, W, U, yC, this.time);
+    drawShopSign(c, this.look, W, U, yC, this.time);
 
     // cash only shows up while getting paid (the counter view stays clean, like the reference)
     if (this.receipt > 0.01 || this.coins.length) drawCash(c, 14 * U, view.top + 12 * U, this.host.money(), U, this.host.cashPulse());

@@ -1,4 +1,5 @@
-// Settings popup: sound / music / vibration, language, restart.
+// Settings popup: sound / music / vibration, language, restart, and clear data
+// (two taps: the second one within a few seconds erases everything).
 
 import { type C, rrc, text, button, shade } from '../core/draw';
 import { view } from '../core/view';
@@ -10,19 +11,24 @@ export class Settings {
   shown = false;
   onRestart: () => void;
   onClose: () => void;
+  onClear: () => void;
+  /** Seconds left to confirm Clear data with a second tap (0 = not armed). */
+  arm = 0;
 
-  constructor(onRestart: () => void, onClose: () => void) {
+  constructor(onRestart: () => void, onClose: () => void, onClear: () => void) {
     this.onRestart = onRestart;
     this.onClose = onClose;
+    this.onClear = onClear;
   }
 
   update(dt: number): void {
     this.open += ((this.shown ? 1 : 0) - this.open) * Math.min(1, dt * 14);
+    this.arm = Math.max(0, this.arm - dt);
   }
 
   rect() {
     const { W, H, U } = view;
-    const w = Math.min(300 * U, W - 40 * U), h = 250 * U;
+    const w = Math.min(300 * U, W - 40 * U), h = 304 * U;
     return { x: W / 2, y: H * 0.46, w, h };
   }
 
@@ -77,7 +83,8 @@ export class Settings {
       c.beginPath(); rrc(c, x, ly, 54 * U, 30 * U, 8 * U); c.fill();
       text(c, l.toUpperCase(), x, ly + 1, 16 * U, on ? '#fff' : '#7a6a56', { font: 'bold' });
     });
-    button(c, 0, r.h / 2 - 44 * U, 170 * U, 44 * U, '↻ ' + t('restart'), '#4a90e2', false, 18 * U);
+    button(c, 0, r.h / 2 - 98 * U, 190 * U, 44 * U, '↻ ' + t('restart'), '#4a90e2', false, 18 * U);
+    button(c, 0, r.h / 2 - 42 * U, 190 * U, 40 * U, this.arm > 0 ? t('clearConfirm') : t('clearData'), '#e0443a', false, this.arm > 0 ? 13 * U : 16 * U);
     c.restore();
   }
 
@@ -120,14 +127,24 @@ export class Settings {
     (['vi', 'en'] as const).forEach((l, i) => {
       if (Math.abs(x - (i - 0.5) * 64 * U) < 29 * U && Math.abs(y - (-r.h / 2 + 150 * U)) < 17 * U) { setLang(l); sfx.tap(); }
     });
-    if (Math.abs(x) < 85 * U && Math.abs(y - (r.h / 2 - 44 * U)) < 24 * U) {
+    if (Math.abs(x) < 95 * U && Math.abs(y - (r.h / 2 - 98 * U)) < 24 * U) {
       sfx.tap();
       this.shown = false;
       this.onRestart();
     }
+    if (Math.abs(x) < 95 * U && Math.abs(y - (r.h / 2 - 42 * U)) < 22 * U) {
+      if (this.arm > 0) {
+        this.arm = 0;
+        this.shown = false;
+        this.onClear();
+      } else {
+        this.arm = 3;
+        sfx.error();
+      }
+    }
     return true;
   }
 
-  show(): void { this.shown = true; }
+  show(): void { this.shown = true; this.arm = 0; }
   close(): void { this.shown = false; sfx.tap(); this.onClose(); }
 }

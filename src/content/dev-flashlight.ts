@@ -1,94 +1,175 @@
-// Sturdy retro angle-head flashlight lying on the mat: olive tube, brass trim, the lens looking straight up.
+// Olive-drab angle-head scout flashlight lying on its back, the lens looking
+// straight up: a matte moulded tube with a stencilled name and grip rings, a
+// slide switch between two guard ridges, a rounded head with a black knurled
+// bezel ring over the clear lens and a polished reflector, and a ribbed tail cap
+// with a brass lanyard ring sticking out of the end. Inside: two D cells, the
+// tail spring on its contact strip, and an LED board behind the reflector.
 
-import { slab, shade, rrc, rrPath, ellPath, glossStreak, text, shapeFrom, roundedPts, rrPts, ellPts } from '../core/draw';
+import { type C, shade, rrc, rrPath, ellPath, shapeFrom, roundedPts, rrPts, ellPts, rng } from '../core/draw';
 import { type DeviceDef, type PartDef, screw } from './device';
 import { pcb, cylH, boss } from './kit';
 
-const OLIVE = '#6f7d3c';
-const OLIVE_D = '#5d6a31';
-const BRASS = '#d9a443';
-const RUBBER = '#2e2f2a';
+const OD = '#5f6b3b';
+const OD_D = '#4b5530';
+const BLACK = '#1d1e1b';
+const BRASS = '#cf9f45';
+const STENCIL = '#e6dcb4';
+const SANS = '"Helvetica Neue", Arial, sans-serif';
+const STAMP = '"Arial Black", "Helvetica Neue", Arial, sans-serif';
 
-const LENS = { x: 100, y: 0 };
+const LENS = { x: 98, y: 0 };
+const TUBE_Y = 27; // half width of the body tube
+const HEAD_X0 = 52, HEAD_X1 = 144, HEAD_H = 44;
+const SWITCH_X = 22;
 
-// Long tube (x -130..46) joined to the square head (x 46..150).
-function bodyPts(inset = 0) {
-  const k = inset;
+function font(c: C, size: number, weight = 700, face = SANS): void {
+  c.font = `${weight} ${size}px ${face}`;
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+}
+
+/** Matte moulded plastic: the colour with a faint mottle and fine speckle. */
+function matte(c: C, path: Path2D, col: string, seed: number, x: number, y: number, w: number, h: number): void {
+  c.save();
+  c.clip(path);
+  c.fillStyle = col; c.fillRect(x, y, w, h);
+  const r = rng(seed);
+  for (let i = 0; i < 10; i++) {
+    const cx = x + r() * w, cy = y + r() * h, rr = 10 + r() * 24;
+    const g = c.createRadialGradient(cx, cy, 1, cx, cy, rr);
+    const a = 0.05 + r() * 0.06;
+    g.addColorStop(0, r() < 0.5 ? `rgba(0,0,0,${a})` : `rgba(255,250,220,${a})`); g.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = g; c.fillRect(cx - rr, cy - rr, rr * 2, rr * 2);
+  }
+  for (let i = 0; i < (w * h) / 8; i++) {
+    c.fillStyle = r() < 0.5 ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,230,0.08)';
+    c.fillRect(x + r() * w, y + r() * h, 0.8, 0.8);
+  }
+  c.restore();
+}
+
+/** Radial teeth at a ring's rim: they paint the part's side wall as vertical knurling. */
+function teeth(c: C, r0: number, r1: number, n: number, dark: string, light: string): void {
+  c.fillStyle = dark;
+  c.beginPath(); c.arc(0, 0, r1, 0, Math.PI * 2); c.arc(0, 0, r0, 0, Math.PI * 2, true); c.fill();
+  c.fillStyle = light;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2, b = ((i + 0.45) / n) * Math.PI * 2;
+    c.beginPath(); c.arc(0, 0, r1, a, b); c.arc(0, 0, r0, b, a, true); c.closePath(); c.fill();
+  }
+}
+
+/** A polished parabolic reflector: bright rim, the bulb's image in rings, the lamp hole. */
+function reflectorFace(c: C, r: number, power: number, tarnish: boolean): void {
+  const g = c.createRadialGradient(-r * 0.25, -r * 0.3, 1, 0, 0, r);
+  g.addColorStop(0, '#ffffff'); g.addColorStop(0.25, '#e9edf2'); g.addColorStop(0.55, '#9ea5ae'); g.addColorStop(0.8, '#e6eaef'); g.addColorStop(1, '#7c838c');
+  c.fillStyle = g; c.beginPath(); c.arc(0, 0, r, 0, Math.PI * 2); c.fill();
+  // the faceted rings of a stamped reflector
+  for (let k = 0.3; k < 1; k += 0.1) {
+    c.strokeStyle = `rgba(255,255,255,${0.25 + (1 - k) * 0.25})`; c.lineWidth = 0.6;
+    c.beginPath(); c.arc(0, 0, r * k, Math.PI * 0.9, Math.PI * 1.7); c.stroke();
+    c.strokeStyle = 'rgba(60,66,74,0.25)';
+    c.beginPath(); c.arc(0, 0, r * k + 0.8, Math.PI * 0.05, Math.PI * 0.6); c.stroke();
+  }
+  // the studio window caught in the bowl
+  c.fillStyle = 'rgba(255,255,255,0.7)';
+  c.save(); c.translate(-r * 0.45, -r * 0.42); c.rotate(-0.7); c.beginPath(); rrc(c, 0, 0, r * 0.32, r * 0.1, r * 0.04); c.fill(); c.restore();
+  // the lamp hole with the LED's dome
+  c.fillStyle = '#2c2f33'; c.beginPath(); c.arc(0, 0, r * 0.2, 0, Math.PI * 2); c.fill();
+  c.fillStyle = power > 0 ? '#fffbe8' : '#f2e2a0'; c.beginPath(); c.arc(0, 0, r * 0.11, 0, Math.PI * 2); c.fill();
+  c.fillStyle = 'rgba(255,255,255,0.8)'; c.beginPath(); c.arc(-r * 0.04, -r * 0.04, r * 0.035, 0, Math.PI * 2); c.fill();
+  if (power > 0) {
+    const pg = c.createRadialGradient(0, 0, 2, 0, 0, r);
+    pg.addColorStop(0, `rgba(255,250,215,${0.95 * power})`); pg.addColorStop(1, `rgba(255,240,190,${0.25 * power})`);
+    c.fillStyle = pg; c.beginPath(); c.arc(0, 0, r, 0, Math.PI * 2); c.fill();
+  }
+  if (tarnish) {
+    c.fillStyle = 'rgba(110,90,60,0.45)';
+    for (const [x, y, rr] of [[-0.45, 0.25, 0.22], [0.35, -0.5, 0.18], [0.55, 0.35, 0.15], [-0.2, -0.6, 0.12]]) { c.beginPath(); c.arc(x * r, y * r, rr * r, 0, Math.PI * 2); c.fill(); }
+  }
+}
+
+// ---------------- body: the hollow moulded shell (tube + head) ----------------
+
+function bodyPts(k = 0): [number, number][] {
   return roundedPts([
-    [-130 + k, -28 + k, 24 - k * 0.6], [46 + k, -28 + k, 6], [46 + k, -50 + k, 12 - k * 0.5], [150 - k, -50 + k, 20 - k * 0.6],
-    [150 - k, 50 - k, 20 - k * 0.6], [46 + k, 50 - k, 12 - k * 0.5], [46 + k, 28 - k, 6], [-130 + k, 28 - k, 24 - k * 0.6],
-  ]);
+    [-132 + k, -TUBE_Y + k, 12], [HEAD_X0 + k, -TUBE_Y + k, 6], [HEAD_X0 + k, -HEAD_H + k, 26 - k], [HEAD_X1 - k, -HEAD_H + k, 30 - k],
+    [HEAD_X1 - k, HEAD_H - k, 30 - k], [HEAD_X0 + k, HEAD_H - k, 26 - k], [HEAD_X0 + k, TUBE_Y - k, 6], [-132 + k, TUBE_Y - k, 12],
+  ], 8);
 }
 const BODY = shapeFrom(bodyPts());
-const BODY_IN = shapeFrom(bodyPts(8));
+const BODY_IN = shapeFrom(bodyPts(6));
 
 const shell: PartDef = {
-  id: 'shell', name: { en: 'Flashlight Body', vi: 'Thân đèn' }, side: 'A', z: 0, x: 0, y: 0, w: 280, h: 100, icon: '🔦',
-  shape: BODY, needs: ['batA', 'batB', 'spring', 'led'], thick: 30, cavity: 18, round: 26, wall: 8,
+  id: 'shell', name: { en: 'Body Shell', vi: 'Thân đèn' }, side: 'A', z: 0, x: 0, y: 0, w: 276, h: 88, icon: '🔦',
+  shape: BODY, needs: ['batA', 'batB', 'spring', 'led'], thick: 7, cavity: 5, round: 7, wall: 5, body: OD_D,
   draw(c) {
-    slab(c, BODY, OLIVE_D, -50, 50, { depth: 10, shadow: 0 });
-    c.fillStyle = shade(OLIVE_D, -0.35);
-    c.fill(BODY_IN);
+    matte(c, BODY, OD_D, 3, -134, -46, 280, 92);
+    c.fillStyle = shade(OD_D, -0.4); c.fill(BODY_IN);
     c.save(); c.clip(BODY_IN);
-    c.strokeStyle = 'rgba(0,0,0,0.3)'; c.lineWidth = 10; c.translate(3, 5); c.stroke(BODY_IN);
+    c.strokeStyle = 'rgba(0,0,0,0.35)'; c.lineWidth = 9; c.translate(2, 4); c.stroke(BODY_IN);
     c.restore();
     // brass contact strip running the length of the tube, from the tail spring to the lamp
-    const g = c.createLinearGradient(0, 14, 0, 20);
+    const g = c.createLinearGradient(0, 15, 0, 20);
     g.addColorStop(0, shade(BRASS, 0.4)); g.addColorStop(1, shade(BRASS, -0.3));
-    c.fillStyle = g; c.fillRect(-122, 15, 196, 5);
-    // lamp socket well in the head
-    c.fillStyle = shade(OLIVE_D, -0.55); c.beginPath(); c.arc(LENS.x, LENS.y, 34, 0, Math.PI * 2); c.fill();
-    boss(c, 60, -38, OLIVE_D); boss(c, 136, 38, OLIVE_D);
+    c.fillStyle = g; c.fillRect(-124, 15, 186, 4.5);
+    c.fillStyle = shade(BRASS, -0.45);
+    for (const x of [-118, -40, 56]) { c.beginPath(); c.arc(x, 17.2, 1.2, 0, Math.PI * 2); c.fill(); }
+    // the lamp well in the head
+    c.fillStyle = shade(OD_D, -0.6); c.beginPath(); c.arc(LENS.x, LENS.y, 34, 0, Math.PI * 2); c.fill();
+    boss(c, 62, -34, OD_D); boss(c, 134, 34, OD_D);
   },
 };
 
-const springPath = rrPath(0, 0, 20, 36, 6);
+// ---------------- insides ----------------
+
+const springPath = rrPath(0, 0, 20, 40, 5);
 const spring: PartDef = {
-  id: 'spring', name: { en: 'Spring & Contact', vi: 'Lò xo' }, side: 'A', z: 3, x: -119, y: 0, w: 20, h: 36, icon: '🌀',
-  shape: springPath, needs: ['cap', 'cover'], thick: 26, round: 9, mat: 'metal', body: '#9aa1a8',
+  id: 'spring', name: { en: 'Tail Spring & Contact', vi: 'Lò xo đuôi' }, side: 'A', z: 3, x: -119, y: 0, w: 20, h: 40, icon: '🌀',
+  shape: springPath, needs: ['cap', 'cover'], thick: 24, round: 8, mat: 'metal', body: '#9aa1a8',
   draw(c, s) {
-    c.fillStyle = 'rgba(10,20,40,0.3)'; c.beginPath(); rrc(c, -2, 4, 20, 36, 6); c.fill();
-    // brass base plate + a fat steel coil seen side-on
-    c.fillStyle = shade(BRASS, -0.15); c.fillRect(-10, -17, 4, 34);
-    c.lineWidth = 2.4; c.lineCap = 'round';
+    // brass base plate + a conical steel coil seen side-on
+    c.fillStyle = shade(BRASS, -0.15); c.fillRect(-10, -19, 3.5, 38);
+    c.lineWidth = 2; c.lineCap = 'round';
     const loose = s.broken;
     for (let i = 0; i < 6; i++) {
-      const x = -5 + i * (loose ? 3.4 : 2.6);
+      const x = -5 + i * (loose ? 3.2 : 2.5), h = 16 - i * 1.4;
       c.strokeStyle = 'rgba(0,0,0,0.3)';
-      c.beginPath(); c.moveTo(x + 1, -14); c.lineTo(x + 3.5, 15); c.stroke();
-      c.strokeStyle = i % 2 ? '#e6e9ee' : '#c4c9d0';
-      c.beginPath(); c.moveTo(x, -15); c.lineTo(x + 2.5, 14); c.stroke();
+      c.beginPath(); c.moveTo(x + 1, -h + 1); c.lineTo(x + 3, h + 1); c.stroke();
+      c.strokeStyle = loose ? (i % 2 ? '#b98a60' : '#9a6a44') : i % 2 ? '#eef1f4' : '#c4c9d0';
+      c.beginPath(); c.moveTo(x, -h); c.lineTo(x + 2, h); c.stroke();
     }
+    c.fillStyle = '#d6dade'; c.beginPath(); c.arc(9, 0, 3, 0, Math.PI * 2); c.fill();
     // brass tab where the long contact strip is riveted on
-    c.fillStyle = BRASS; c.fillRect(-4, 14, 14, 5);
-    c.fillStyle = shade(BRASS, -0.4); c.beginPath(); c.arc(6, 16.5, 1.5, 0, Math.PI * 2); c.fill();
+    c.fillStyle = BRASS; c.fillRect(-6, 14, 16, 4.5);
+    c.fillStyle = shade(BRASS, -0.4); c.beginPath(); c.arc(6, 16.2, 1.4, 0, Math.PI * 2); c.fill();
     if (loose) {
-      // rusty, sagging and the tab snapped loose
+      // rusty, sagging, and the tab snapped off its rivet
       c.fillStyle = 'rgba(170,90,40,0.75)';
-      for (const [x, y, r] of [[2, -8, 3.5], [8, 4, 3], [-2, 8, 2.5]]) { c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill(); }
-      c.strokeStyle = '#2a2a2a'; c.lineWidth = 2; c.beginPath(); c.moveTo(3, 13); c.lineTo(7, 20); c.stroke();
+      for (const [x, y, r] of [[2, -8, 3.5], [6, 4, 3], [-2, 8, 2.5]]) { c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill(); }
+      c.strokeStyle = '#2a2a2a'; c.lineWidth = 1.8; c.beginPath(); c.moveTo(3, 13); c.lineTo(8, 21); c.stroke();
     }
   },
 };
 
-const batPath = rrPath(0, 0, 82, 40, 18);
-function cell(id: string, x: number, color: string): PartDef {
+const batPath = rrPath(0, 0, 80, 34, 16);
+function cell(id: string, x: number): PartDef {
   return {
-    id, name: { en: 'D Battery', vi: 'Pin đại' }, side: 'A', z: 3, x, y: 0, w: 82, h: 40, icon: '🔋',
-    shape: batPath, needs: id === 'batA' ? ['cover', 'cap'] : ['cover'], thick: 40, round: 20, body: shade(color, -0.3),
+    id, name: { en: 'D Cell', vi: 'Pin đại' }, side: 'A', z: 3, x, y: 0, w: 80, h: 34, icon: '🔋',
+    shape: batPath, needs: id === 'batA' ? ['cover', 'cap'] : ['cover'], thick: 32, round: 16, body: '#2a2622',
     draw(c, s) {
-      cylH(c, 78, 38, color, '#c9ccd2');
-      // gold top band + label, + nub pointing at the head
-      c.fillStyle = '#e8c15a'; c.fillRect(14, -19, 18, 38);
-      c.fillStyle = 'rgba(0,0,0,0.25)'; c.fillRect(14, -19, 1.5, 38);
-      text(c, 'D', -8, 0, 18, '#ffffff', { font: 'bold' });
-      text(c, '1.5V', -8, 13, 7, 'rgba(255,255,255,0.8)', { font: 'bold' });
-      c.fillStyle = '#c9ccd2'; c.beginPath(); rrc(c, 41, 0, 5, 12, 2); c.fill();
+      cylH(c, 76, 33, '#26221f', '#c9ccd2');
+      // copper-gold top band, a printed label, the + nub pointing at the head
+      const g = c.createLinearGradient(0, -16, 0, 16);
+      g.addColorStop(0, '#7a4a1e'); g.addColorStop(0.3, '#e8a95a'); g.addColorStop(0.6, '#c27a34'); g.addColorStop(1, '#5e3614');
+      c.fillStyle = g; c.fillRect(12, -16.5, 22, 33);
+      c.fillStyle = 'rgba(0,0,0,0.3)'; c.fillRect(12, -16.5, 1, 33);
+      font(c, 8.5, 900, STAMP); c.fillStyle = '#e8a95a'; c.fillText('CHILL', -12, -3);
+      font(c, 4.2, 700); c.fillStyle = '#d8d2c8'; c.fillText('ALKALINE · D · 1.5V', -12, 6);
+      c.fillStyle = '#c9ccd2'; c.beginPath(); rrc(c, 40, 0, 4, 11, 1.5); c.fill();
       if (s.broken) {
-        // leaking: white crust round the + end, a brown drip
         c.fillStyle = 'rgba(235,240,232,0.92)';
-        for (const [dx, dy, r] of [[36, -10, 5], [38, 6, 6], [32, 14, 3.5], [40, -2, 3]]) { c.beginPath(); c.arc(dx, dy, r, 0, Math.PI * 2); c.fill(); }
-        c.fillStyle = 'rgba(120,80,30,0.6)'; c.beginPath(); c.ellipse(24, 16, 6, 3, 0.3, 0, Math.PI * 2); c.fill();
+        for (const [dx, dy, r] of [[34, -9, 4.5], [36, 6, 5], [31, 12, 3]]) { c.beginPath(); c.arc(dx, dy, r, 0, Math.PI * 2); c.fill(); }
       }
     },
   };
@@ -97,186 +178,220 @@ function cell(id: string, x: number, color: string): PartDef {
 const ledPath = ellPath(0, 0, 30, 30);
 const led: PartDef = {
   id: 'led', name: { en: 'LED Board', vi: 'Bo đèn LED' }, side: 'A', z: 3, x: LENS.x, y: LENS.y, w: 60, h: 60, icon: '💡',
-  shape: ledPath, needs: ['reflector'], elev: 14, thick: 4, mat: 'pcb', body: '#1d5c37',
+  shape: ledPath, needs: ['reflector'], elev: 4, thick: 3, mat: 'pcb', body: '#1d5c37',
+  bumps: [{ kind: 'box', x: 0, y: 0, w: 10, h: 10, height: 2.5, color: '#f2f2ee' }, { kind: 'cyl', x: 0, y: 0, w: 6, height: 4.5, color: '#f2e2a0' }],
   draw(c, s) {
     c.save();
     c.beginPath(); c.arc(0, 0, 30, 0, Math.PI * 2); c.clip();
-    pcb(c, 64, 64, 515);
+    pcb(c, 64, 64, 515, '#2c6d4a');
     c.restore();
     c.strokeStyle = '#1d5c37'; c.lineWidth = 1.2; c.beginPath(); c.arc(0, 0, 29.5, 0, Math.PI * 2); c.stroke();
-    // the big LED: a yellow phosphor square on a white star
-    c.fillStyle = '#f2f2ee'; c.beginPath(); rrc(c, 0, 0, 16, 16, 3); c.fill();
-    c.fillStyle = s.power > 0 ? '#fffbe0' : '#f2d36a'; c.beginPath(); c.arc(0, 0, 5, 0, Math.PI * 2); c.fill();
-    // + / − pads for the battery leads
+    // the star LED: a white ceramic square, the yellow phosphor dome
+    c.fillStyle = '#f2f2ee'; c.beginPath(); rrc(c, 0, 0, 12, 12, 2); c.fill();
+    c.fillStyle = s.power > 0 ? '#fffbe0' : '#f2d36a'; c.beginPath(); c.arc(0, 0, 3.6, 0, Math.PI * 2); c.fill();
+    // a current resistor, + / − pads for the battery leads
+    c.fillStyle = '#26282d'; c.fillRect(10, -14, 8, 4);
     c.fillStyle = '#e8c15a';
-    for (const [x, y] of [[-20, -12], [-20, 12]]) { c.beginPath(); c.arc(x, y, 3.2, 0, Math.PI * 2); c.fill(); }
+    for (const [x, y] of [[-20, -12], [-20, 12]]) { c.beginPath(); c.arc(x, y, 3, 0, Math.PI * 2); c.fill(); }
+    font(c, 3.4, 700); c.fillStyle = '#e6f2ea'; c.fillText('+', -20, -18); c.fillText('−', -20, 18);
     if (s.broken) {
-      const g = c.createRadialGradient(14, 10, 1, 14, 10, 13);
+      const g = c.createRadialGradient(14, 10, 1, 14, 10, 12);
       g.addColorStop(0, 'rgba(20,12,8,0.95)'); g.addColorStop(0.6, 'rgba(60,30,10,0.6)'); g.addColorStop(1, 'rgba(60,30,10,0)');
-      c.fillStyle = g; c.beginPath(); c.arc(14, 10, 13, 0, Math.PI * 2); c.fill();
+      c.fillStyle = g; c.beginPath(); c.arc(14, 10, 12, 0, Math.PI * 2); c.fill();
     }
   },
 };
 
-const reflPath = ellPath(0, 0, 40, 40);
+const REFL_R = 34;
 const reflector: PartDef = {
-  id: 'reflector', name: { en: 'Reflector', vi: 'Chóa đèn' }, side: 'A', z: 4, x: LENS.x, y: LENS.y, w: 80, h: 80, icon: '🥣',
-  shape: reflPath, needs: ['lens'], elev: 20, thick: 20, round: 4, mat: 'metal', body: '#9aa1a8',
-  draw(c, s) {
-    c.fillStyle = 'rgba(10,20,40,0.3)'; c.beginPath(); c.arc(-3, 5, 40, 0, Math.PI * 2); c.fill();
-    // a polished bowl: bright rings stepping down to the lamp hole
-    for (let i = 0; i < 6; i++) {
-      const r = 40 - i * 6;
-      const g = c.createRadialGradient(-r * 0.4, -r * 0.4, 1, 0, 0, r);
-      g.addColorStop(0, '#ffffff'); g.addColorStop(0.6, i % 2 ? '#d5dae0' : '#b9bfc8'); g.addColorStop(1, '#8b9097');
-      c.fillStyle = g; c.beginPath(); c.arc(0, 0, r, 0, Math.PI * 2); c.fill();
-    }
-    c.fillStyle = '#3a3d42'; c.beginPath(); c.arc(0, 0, 8, 0, Math.PI * 2); c.fill();
-    c.fillStyle = s.power > 0 ? '#fffbe0' : '#f2d36a'; c.beginPath(); c.arc(0, 0, 4.5, 0, Math.PI * 2); c.fill();
-    if (s.power > 0) {
-      const g = c.createRadialGradient(0, 0, 2, 0, 0, 40);
-      g.addColorStop(0, `rgba(255,250,215,${0.9 * s.power})`); g.addColorStop(1, 'rgba(255,240,190,0)');
-      c.fillStyle = g; c.beginPath(); c.arc(0, 0, 40, 0, Math.PI * 2); c.fill();
-    }
-    if (s.broken) {
-      // tarnished, blotchy silvering
-      c.fillStyle = 'rgba(110,90,60,0.45)';
-      for (const [x, y, r] of [[-18, 10, 9], [14, -20, 7], [22, 14, 6], [-8, -24, 5]]) { c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill(); }
-    }
-  },
+  id: 'reflector', name: { en: 'Reflector', vi: 'Chóa đèn' }, side: 'A', z: 4, x: LENS.x, y: LENS.y, w: 68, h: 68, icon: '🥣',
+  shape: ellPath(0, 0, REFL_R, REFL_R), needs: ['lens'], elev: 8, thick: 22, round: 3, mat: 'metal', body: '#9aa1a8',
+  draw(c, s) { reflectorFace(c, REFL_R, s.power, s.broken); },
 };
 
-const lensPath = ellPath(0, 0, 38, 38);
+const LENS_R = 33;
 const lens: PartDef = {
-  id: 'lens', name: { en: 'Lens', vi: 'Mặt kính' }, side: 'A', z: 5, x: LENS.x, y: LENS.y, w: 76, h: 76, icon: '🔵',
-  shape: lensPath, needs: ['head'], elev: 44, thick: 4, round: 2, mat: 'glass', body: '#b9d6e0',
+  id: 'lens', name: { en: 'Lens', vi: 'Mặt kính' }, side: 'A', z: 5, x: LENS.x, y: LENS.y, w: 66, h: 66, icon: '🔵',
+  shape: ellPath(0, 0, LENS_R, LENS_R), needs: ['head'], elev: 40, thick: 4, round: 2, mat: 'glass', body: '#b9d6e0',
   draw(c, s) {
     if (s.inDevice) {
-      // clear glass: show the reflector bowl underneath
-      for (let i = 0; i < 6; i++) {
-        const r = 38 - i * 6;
-        c.fillStyle = i % 2 ? '#d5dae0' : '#b9bfc8'; c.beginPath(); c.arc(0, 0, r, 0, Math.PI * 2); c.fill();
-      }
-      c.fillStyle = '#3a3d42'; c.beginPath(); c.arc(0, 0, 8, 0, Math.PI * 2); c.fill();
-      c.fillStyle = '#f2d36a'; c.beginPath(); c.arc(0, 0, 4.5, 0, Math.PI * 2); c.fill();
-      c.fillStyle = 'rgba(190,225,240,0.22)';
-    } else c.fillStyle = 'rgba(205,232,245,0.9)';
-    c.beginPath(); c.arc(0, 0, 38, 0, Math.PI * 2); c.fill();
-    if (s.power > 0) {
-      const g = c.createRadialGradient(0, 0, 2, 0, 0, 38);
-      g.addColorStop(0, `rgba(255,255,240,${s.power})`); g.addColorStop(0.7, `rgba(255,246,200,${0.75 * s.power})`); g.addColorStop(1, `rgba(255,236,170,${0.4 * s.power})`);
-      c.fillStyle = g; c.beginPath(); c.arc(0, 0, 38, 0, Math.PI * 2); c.fill();
-    }
-    // a slightly domed lens: two highlights
-    c.fillStyle = 'rgba(255,255,255,0.6)';
-    c.beginPath(); c.ellipse(-14, -16, 12, 5, -0.7, 0, Math.PI * 2); c.fill();
+      // clear glass: the reflector bowl underneath shows through
+      reflectorFace(c, LENS_R, s.power, false);
+      c.fillStyle = 'rgba(190,225,240,0.14)';
+    } else c.fillStyle = 'rgba(208,234,246,0.9)';
+    c.beginPath(); c.arc(0, 0, LENS_R, 0, Math.PI * 2); c.fill();
+    // a slightly domed lens: two highlights and a thin edge
+    c.fillStyle = 'rgba(255,255,255,0.55)';
+    c.beginPath(); c.ellipse(-12, -14, 11, 4, -0.7, 0, Math.PI * 2); c.fill();
     c.fillStyle = 'rgba(255,255,255,0.3)';
-    c.beginPath(); c.arc(16, 15, 4, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.arc(14, 13, 3.5, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = 'rgba(255,255,255,0.5)'; c.lineWidth = 1; c.beginPath(); c.arc(0, 0, LENS_R - 1, 0, Math.PI * 2); c.stroke();
     if (s.broken) {
-      // scratched protective film with a lifted edge
       c.strokeStyle = 'rgba(255,255,255,0.75)'; c.lineWidth = 0.9;
-      for (const [x0, y0, x1, y1] of [[-26, -10, 20, 22], [-10, -30, 28, -4], [-30, 12, -4, 30], [6, -20, 30, 12], [-20, 20, 10, 2]]) {
+      for (const [x0, y0, x1, y1] of [[-24, -10, 18, 20], [-10, -28, 26, -4], [-28, 12, -4, 28], [6, -20, 28, 12]]) {
         c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y1); c.stroke();
       }
-      c.fillStyle = 'rgba(255,255,255,0.65)';
-      c.beginPath(); c.moveTo(26, -27); c.lineTo(33, -18); c.lineTo(22, -22); c.closePath(); c.fill();
     }
   },
 };
 
-const headPath = shapeFrom(rrPts(0, 0, 104, 100, 20), [ellPts(2, 0, 34, 34, 48)]);
+// ---------------- the head ----------------
+
+const HEAD_CX = (HEAD_X0 + HEAD_X1) / 2; // 98
+const HOLE_R = 34;
+const headPath = shapeFrom(roundedPts([
+  [-46, -44, 26], [46, -44, 30], [46, 44, 30], [-46, 44, 26],
+], 8), [ellPts(LENS.x - HEAD_CX, 0, HOLE_R, HOLE_R, 48)]);
 const head: PartDef = {
-  id: 'head', name: { en: 'Lamp Head', vi: 'Đầu đèn' }, side: 'A', z: 6, x: 98, y: 0, w: 104, h: 100, icon: '🔦',
-  shape: headPath, needs: ['f3', 'f4'], tool: 'brush', elev: 30, thick: 22, round: 14,
+  id: 'head', name: { en: 'Lamp Head', vi: 'Đầu đèn' }, side: 'A', z: 6, x: HEAD_CX, y: 0, w: 92, h: 88, icon: '🔦',
+  shape: headPath, needs: ['f3', 'f4', 'bezel'], tool: 'brush', elev: 7, thick: 39, round: 16, body: OD_D,
   draw(c, s) {
-    slab(c, headPath, OLIVE, -50, 50, { depth: 6, shadow: 0 });
-    glossStreak(c, headPath, -52, -50, 104, 60, 0.25);
-    // brass bezel ring round the lens window
-    c.lineWidth = 6; c.strokeStyle = BRASS;
-    c.beginPath(); c.arc(2, 0, 37, 0, Math.PI * 2); c.stroke();
-    c.lineWidth = 1.2; c.strokeStyle = shade(BRASS, 0.45);
-    c.beginPath(); c.arc(2, -1, 37, Math.PI * 1.05, Math.PI * 1.8); c.stroke();
-    c.strokeStyle = shade(BRASS, -0.4); c.lineWidth = 1;
-    for (let i = 0; i < 32; i++) {
-      const a = (i / 32) * Math.PI * 2;
-      c.beginPath(); c.moveTo(2 + Math.cos(a) * 35, Math.sin(a) * 35); c.lineTo(2 + Math.cos(a) * 39.5, Math.sin(a) * 39.5); c.stroke();
+    matte(c, headPath, OD, 21, -48, -46, 96, 92);
+    // the moulded seat the bezel screws onto, a parting line, two rivets
+    c.strokeStyle = shade(OD, -0.3); c.lineWidth = 2; c.beginPath(); c.arc(0, 0, HOLE_R + 9, 0, Math.PI * 2); c.stroke();
+    c.strokeStyle = 'rgba(255,255,230,0.18)'; c.lineWidth = 0.8; c.beginPath(); c.arc(0, 0.8, HOLE_R + 10.5, Math.PI * 1.05, Math.PI * 1.9); c.stroke();
+    c.strokeStyle = 'rgba(0,0,0,0.25)'; c.lineWidth = 0.7; c.beginPath(); c.moveTo(-46, 0); c.lineTo(-44, 0); c.moveTo(44, 0); c.lineTo(46, 0); c.stroke();
+    for (const [x, y] of [[-38, 36], [38, -36]]) {
+      c.fillStyle = shade(OD, 0.2); c.beginPath(); c.arc(x, y, 2.6, 0, Math.PI * 2); c.fill();
+      c.fillStyle = shade(OD, -0.35); c.beginPath(); c.arc(x + 0.6, y + 0.6, 1.2, 0, Math.PI * 2); c.fill();
     }
-    // stamped rivets + a little hook for the belt clip
-    c.fillStyle = shade(OLIVE, 0.25);
-    for (const [x, y] of [[-40, 38], [44, -38]]) { c.beginPath(); c.arc(x, y, 3, 0, Math.PI * 2); c.fill(); }
+    // the inside of the lens hole: a dark step down to the glass
+    c.strokeStyle = '#1f2414'; c.lineWidth = 2.5; c.beginPath(); c.arc(0, 0, HOLE_R - 0.5, 0, Math.PI * 2); c.stroke();
+    font(c, 3.6, 700); c.fillStyle = shade(OD, -0.35);
+    c.fillText('▲ LENS UP', 0, -40);
     if (s.broken) {
       c.strokeStyle = 'rgba(40,40,30,0.7)'; c.lineWidth = 1.2;
-      c.beginPath(); c.moveTo(42, 20); c.lineTo(48, 30); c.lineTo(44, 40); c.stroke();
+      c.beginPath(); c.moveTo(40, 20); c.lineTo(44, 30); c.lineTo(41, 38); c.stroke();
     }
   },
 };
 
-const coverPath = rrPath(0, 0, 176, 56, 24);
-const SWITCH_X = 66;
-const cover: PartDef = {
-  id: 'cover', name: { en: 'Tube Cover', vi: 'Vỏ ống' }, side: 'A', z: 6, x: -42, y: 0, w: 176, h: 56, icon: '🟩',
-  shape: coverPath, needs: ['f1', 'f2'], tool: 'sponge', elev: 30, thick: 28, round: 28,
-  bumps: [{ kind: 'cyl', x: SWITCH_X, y: 0, w: 20, height: 6, color: RUBBER }],
+// the black screw-on bezel ring that holds the lens: knurled all round
+const BEZ_OUT = 42, BEZ_IN = 31;
+const bezelShape = shapeFrom(ellPts(0, 0, BEZ_OUT, BEZ_OUT, 64), [ellPts(0, 0, BEZ_IN, BEZ_IN, 48)]);
+const bezel: PartDef = {
+  id: 'bezel', name: { en: 'Bezel Ring', vi: 'Vòng ren kính' }, side: 'A', z: 8, x: LENS.x, y: LENS.y, w: 84, h: 84, icon: '⭕',
+  shape: bezelShape, elev: 44, thick: 7, round: 2, body: '#121311',
   draw(c, s) {
-    slab(c, coverPath, OLIVE, -28, 28, { depth: 6, shadow: 0 });
-    c.save(); c.clip(coverPath);
-    // tube shading: a long highlight along the top
-    const g = c.createLinearGradient(0, -28, 0, 28);
-    g.addColorStop(0, 'rgba(0,0,0,0.12)'); g.addColorStop(0.35, 'rgba(255,255,255,0.28)'); g.addColorStop(0.6, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.25)');
-    c.fillStyle = g; c.fillRect(-88, -28, 176, 56);
-    // diamond-knurled grip
-    c.strokeStyle = 'rgba(40,50,20,0.45)'; c.lineWidth = 1;
-    for (let x = -78; x < -14; x += 5) {
-      c.beginPath(); c.moveTo(x, -28); c.lineTo(x + 24, 28); c.stroke();
-      c.beginPath(); c.moveTo(x + 24, -28); c.lineTo(x, 28); c.stroke();
-    }
-    // brass trim bands
-    c.fillStyle = BRASS;
-    for (const x of [-84, -12, 84]) c.fillRect(x - 2, -28, 4, 56);
-    c.restore();
-    // rubber switch boot on its little saddle
-    c.fillStyle = shade(OLIVE, -0.25); c.beginPath(); rrc(c, SWITCH_X, 0, 30, 30, 8); c.fill();
-    const sg = c.createRadialGradient(SWITCH_X - 3, -4, 1, SWITCH_X, 0, 10);
-    sg.addColorStop(0, '#5a5c52'); sg.addColorStop(1, RUBBER);
-    c.fillStyle = sg; c.beginPath(); c.arc(SWITCH_X, 0, 10, 0, Math.PI * 2); c.fill();
-    text(c, 'CHILL·LITE', 30, 0, 9, shade(OLIVE, 0.55), { font: 'bold' });
+    c.save();
+    const ann = new Path2D();
+    ann.arc(0, 0, BEZ_OUT, 0, Math.PI * 2); ann.arc(0, 0, BEZ_IN, 0, Math.PI * 2, true);
+    c.clip(ann, 'evenodd');
+    c.fillStyle = BLACK; c.beginPath(); c.arc(0, 0, BEZ_OUT, 0, Math.PI * 2); c.fill();
+    teeth(c, 39.5, BEZ_OUT, 72, '#0f100e', '#3d3f3a');
+    const g = c.createLinearGradient(-36, -36, 36, 36);
+    g.addColorStop(0, '#4a4c47'); g.addColorStop(0.5, '#1f201d'); g.addColorStop(1, '#383a35');
+    c.fillStyle = g; c.beginPath(); c.arc(0, 0, 39.3, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = 'rgba(255,255,255,0.18)'; c.lineWidth = 0.8; c.beginPath(); c.arc(0, 0, 37, Math.PI * 1.0, Math.PI * 1.7); c.stroke();
+    c.strokeStyle = '#000'; c.lineWidth = 1.5; c.beginPath(); c.arc(0, 0, BEZ_IN + 0.6, 0, Math.PI * 2); c.stroke();
+    font(c, 3.2, 700); c.fillStyle = '#8c8f86';
+    c.fillText('◀ OPEN', 0, -35);
     if (s.power > 0) {
-      c.fillStyle = 'rgba(255,240,180,0.6)'; c.beginPath(); c.arc(SWITCH_X, 0, 4, 0, Math.PI * 2); c.fill();
+      c.strokeStyle = `rgba(255,245,200,${0.5 * s.power})`; c.lineWidth = 2; c.beginPath(); c.arc(0, 0, BEZ_IN + 1.5, 0, Math.PI * 2); c.stroke();
+    }
+    c.restore();
+  },
+};
+
+// ---------------- the tube cover with the switch ----------------
+
+const TUBE_X0 = -120, TUBE_X1 = 56;
+const COVER_X = (TUBE_X0 + TUBE_X1) / 2; // -30
+const coverPath = rrPath(0, 0, TUBE_X1 - TUBE_X0, TUBE_Y * 2, 14);
+const sw = SWITCH_X - COVER_X;
+const cover: PartDef = {
+  id: 'cover', name: { en: 'Tube Cover', vi: 'Vỏ ống' }, side: 'A', z: 6, x: COVER_X, y: 0, w: TUBE_X1 - TUBE_X0, h: TUBE_Y * 2, icon: '🟩',
+  shape: coverPath, needs: ['f1', 'f2'], tool: 'sponge', elev: 7, thick: 35, round: 26, body: OD_D,
+  bumps: [
+    // the two guard ridges either side of the slide switch, and the slide knob between them
+    { kind: 'box', x: sw, y: -10, w: 30, h: 4, height: 5, color: OD },
+    { kind: 'box', x: sw, y: 10, w: 30, h: 4, height: 5, color: OD },
+    { kind: 'box', x: sw - 5, y: 0, w: 10, h: 9, height: 4, color: '#2a2c26' },
+  ],
+  draw(c, s) {
+    const P = coverPath;
+    matte(c, P, OD, 11, -86, -27, 172, 54);
+    c.save(); c.clip(P);
+    // moulded grip rings near the tail
+    for (let i = 0; i < 7; i++) {
+      const x = -78 + i * 5;
+      c.fillStyle = 'rgba(0,0,0,0.28)'; c.fillRect(x, -27, 1.4, 54);
+      c.fillStyle = 'rgba(255,255,230,0.14)'; c.fillRect(x + 1.4, -27, 1, 54);
+    }
+    // the switch plate and its ON / OFF marks
+    c.fillStyle = shade(OD, -0.22); c.beginPath(); rrc(c, sw, 0, 34, 16, 3); c.fill();
+    c.fillStyle = '#26281f'; c.beginPath(); rrc(c, sw, 0, 22, 4, 2); c.fill();
+    c.restore();
+    font(c, 4, 800); c.fillStyle = STENCIL;
+    c.fillText('OFF', sw - 9, -16.5); c.fillText('ON', sw + 9, -16.5);
+    // the stencilled name, a little worn
+    c.save();
+    font(c, 9.5, 900, STAMP);
+    c.fillStyle = STENCIL;
+    c.globalAlpha = 0.85;
+    c.fillText('CHILL SCOUT', -30, -1);
+    font(c, 4.4, 700);
+    c.fillText('FLASHLIGHT  MX-74  ·  2 × D', -30, 9);
+    c.globalAlpha = 1;
+    const r = rng(5);
+    c.fillStyle = OD;
+    for (let i = 0; i < 40; i++) c.fillRect(-62 + r() * 64, -6 + r() * 18, 0.6 + r() * 1.4, 0.6 + r());
+    c.restore();
+    if (s.power > 0) {
+      c.fillStyle = 'rgba(255,240,180,0.45)'; c.beginPath(); c.arc(sw + 5, 0, 4, 0, Math.PI * 2); c.fill();
     }
     if (s.broken) {
       c.strokeStyle = 'rgba(30,35,15,0.8)'; c.lineWidth = 1.2;
-      c.beginPath(); c.moveTo(SWITCH_X - 8, -6); c.lineTo(SWITCH_X, 2); c.lineTo(SWITCH_X + 7, -5); c.stroke();
+      c.beginPath(); c.moveTo(sw - 8, -6); c.lineTo(sw, 2); c.lineTo(sw + 7, -5); c.stroke();
     }
   },
 };
 
-const capPath = rrPath(0, 0, 22, 60, 8);
+// ---------------- the ribbed tail cap with its lanyard ring ----------------
+
+const capPath = shapeFrom(roundedPts([[-14, -29, 6], [10, -29, 2], [10, 29, 2], [-14, 29, 6]]));
 const cap: PartDef = {
-  id: 'cap', name: { en: 'End Cap', vi: 'Nắp đuôi' }, side: 'A', z: 7, x: -140, y: 0, w: 22, h: 60, icon: '⚫',
-  shape: capPath, elev: 2, thick: 54, round: 10, mat: 'metal', body: shade(BRASS, -0.35),
+  id: 'cap', name: { en: 'Tail Cap', vi: 'Nắp đuôi' }, side: 'A', z: 7, x: -128, y: 0, w: 24, h: 58, icon: '⚫',
+  shape: capPath, needs: ['lanyard'], elev: 0, thick: 42, round: 12, body: OD_D,
+  bumps: [{ kind: 'box', x: -11, y: 0, w: 5, h: 12, height: 3, color: BRASS, metal: true }],
   draw(c, s) {
-    slab(c, capPath, BRASS, -30, 30, { depth: 4, shadow: 0 });
-    // knurled ridges
-    c.strokeStyle = shade(BRASS, -0.4); c.lineWidth = 1;
-    for (let y = -26; y <= 26; y += 3.5) { c.beginPath(); c.moveTo(-9, y); c.lineTo(9, y); c.stroke(); }
-    c.fillStyle = 'rgba(255,255,255,0.4)'; c.fillRect(-9, -26, 3, 52);
-    // lanyard ring
-    c.strokeStyle = '#9aa1a8'; c.lineWidth = 2.5;
-    c.beginPath(); c.arc(-14, 0, 5, Math.PI * 0.5, Math.PI * 1.5); c.stroke();
-    if (s.broken) {
-      c.fillStyle = 'rgba(80,110,60,0.6)'; c.beginPath(); c.ellipse(3, 10, 6, 9, 0, 0, Math.PI * 2); c.fill();
+    matte(c, capPath, shade(OD, -0.08), 31, -16, -30, 28, 60);
+    c.save(); c.clip(capPath);
+    // deep grip ribs round the cap (they run across, so the modelled sides show them as flutes)
+    for (let y = -27; y <= 27; y += 4) {
+      c.fillStyle = 'rgba(0,0,0,0.32)'; c.fillRect(-16, y, 28, 1.6);
+      c.fillStyle = 'rgba(255,255,230,0.12)'; c.fillRect(-16, y + 1.6, 28, 0.8);
     }
+    c.fillStyle = 'rgba(0,0,0,0.35)'; c.fillRect(8, -30, 2, 60);
+    c.restore();
+    // the brass lanyard ring's mount
+    c.fillStyle = BRASS; c.beginPath(); rrc(c, -11, 0, 5, 12, 1.5); c.fill();
+    if (s.broken) {
+      c.fillStyle = 'rgba(80,110,60,0.6)'; c.beginPath(); c.ellipse(-2, 10, 6, 9, 0, 0, Math.PI * 2); c.fill();
+    }
+  },
+};
+
+// the lanyard ring hanging off the tail
+const RING = shapeFrom(ellPts(0, 0, 9, 9, 32), [ellPts(0, 0, 6, 6, 24)]);
+const lanyard: PartDef = {
+  id: 'lanyard', name: { en: 'Lanyard Ring', vi: 'Khoen dây đeo' }, side: 'A', z: 8, x: -148, y: 0, w: 18, h: 18, icon: '⭕',
+  shape: RING, elev: 19, thick: 3, round: 1.5, mat: 'metal', body: shade(BRASS, -0.3),
+  draw(c) {
+    const g = c.createLinearGradient(-9, -9, 9, 9);
+    g.addColorStop(0, shade(BRASS, 0.5)); g.addColorStop(0.5, BRASS); g.addColorStop(1, shade(BRASS, -0.35));
+    c.fillStyle = g; c.fill(RING);
   },
 };
 
 export const flashlight: DeviceDef = {
   id: 'flashlight',
   name: { en: 'Scout Flashlight', vi: 'Đèn pin' },
-  w: 304, h: 104,
+  w: 304, h: 96,
   hasBack: false,
   parts: [
-    shell, spring, cell('batA', -70, '#e05a3a'), cell('batB', 14, '#3a7be0'), led, reflector, lens, head, cover, cap,
-    screw('f1', -104, 0, 'A'), screw('f2', -30, 0, 'A'), screw('f3', 60, -38, 'A'), screw('f4', 136, 38, 'A'),
+    shell, spring, cell('batA', -66), cell('batB', 16), led, reflector, lens, head, bezel, cover, cap, lanyard,
+    screw('f1', -100, 0, 'A'), screw('f2', -4, 0, 'A'), screw('f3', 62, -34, 'A'), screw('f4', 134, 34, 'A'),
   ],
   working(c, t, k) {
     c.save();

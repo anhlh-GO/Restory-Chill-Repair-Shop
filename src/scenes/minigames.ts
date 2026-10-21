@@ -514,6 +514,8 @@ export class Minigame {
   host: MiniHost;
   time = 0;
   idle = 0;
+  /** Seconds left of a hint asked for with the bulb. */
+  hintT = 0;
   open = 0;
   winT = -1;
   closing = false;
@@ -543,6 +545,7 @@ export class Minigame {
   update(dt: number): void {
     this.time += dt;
     this.idle += dt;
+    this.hintT = Math.max(0, this.hintT - dt);
     this.open = Math.min(1, this.open + dt * 4);
     this.game.update?.(dt, this.board());
     if (this.winT < 0 && this.game.solved()) {
@@ -621,8 +624,11 @@ export class Minigame {
       c.fillStyle = `rgba(255,255,255,${Math.max(0, 0.35 - this.winT * 0.5)})`;
       c.beginPath(); rrc(c, b.x + b.w / 2, b.y + b.h / 2, b.w, b.h, 14 * U); c.fill();
       pill(c, W / 2, b.y + b.h / 2, t('repaired'), 18 * U, Math.min(1, this.winT * 4));
-    } else if (this.idle > (this.host.tutorial ? 1.2 : 5)) {
+    } else if ((this.host.tutorial && this.idle > 1.2) || this.hintT > 0) {
+      c.save();
+      c.globalAlpha *= this.host.tutorial ? 1 : Math.min(1, this.hintT * 2);
       this.game.hint?.(c, b, this.time);
+      c.restore();
     }
     c.restore();
 

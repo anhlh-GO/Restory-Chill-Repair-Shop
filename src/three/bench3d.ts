@@ -10,6 +10,7 @@ import { rng } from '../core/draw';
 import type { Bench, RT } from '../scenes/bench';
 import { SCREW_R } from '../content/device';
 import { tierOf } from '../content/meta';
+import { DoneFx } from './donefx';
 
 /** Workbench upgrades: cutting mat, lamp, desk wood (index = tier). */
 const MAT_COLORS = ['#2f5189', '#2f7a5e', '#2f7a5e', '#2a6a5a'];
@@ -68,6 +69,8 @@ export class Bench3D {
       this.owner.set(m.group, p);
     }
     this.devRoot.add(this.devInner);
+    this.fx = new DoneFx(b.L.device);
+    this.devInner.add(this.fx.root);
     this.layoutStacks();
     this.driver = makeScrewdriver();
     this.dish = makeDish();
@@ -77,6 +80,9 @@ export class Bench3D {
     for (let i = 0; i < 16; i++) this.dishScrews.push(makeScrewMesh());
     for (let i = 0; i < 4; i++) this.flyScrews.push(makeScrewMesh());
   }
+
+  /** The switched-on celebration, riding on the gadget. */
+  fx!: DoneFx;
 
   stack(p: RT): Stack { return this.stacks.get(p.def.id)!; }
 
@@ -417,6 +423,7 @@ export class Bench3D {
         if (p.state !== 'in' || p.anim) continue;
         this.partInDevice(p);
       }
+      this.fx.update(b.phase === 'done', b.power, b.time, this.fTop);
       objs.push(this.devRoot);
     }
     // tray
@@ -523,6 +530,7 @@ export class Bench3D {
     if (!this.ok) return;
     for (const m of this.models.values()) { disposeObject(m.group); m.dispose(); }
     if (this.pad) disposeObject(this.pad);
+    this.fx.dispose();
     for (const o of [this.desk, this.driver, this.dish, this.box.group, this.brush, this.sponge, ...this.dishScrews, ...this.flyScrews]) disposeObject(o);
     this.models.clear();
   }

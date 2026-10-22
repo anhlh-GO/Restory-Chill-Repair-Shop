@@ -126,10 +126,9 @@ const UI = {
   shopOpens: { en: 'The shop can be upgraded now! 🛠', vi: 'Giờ đã có thể nâng cấp tiệm! 🛠' },
   // quick diagnosis
   diagTitle: { en: 'What seems wrong?', vi: 'Có vẻ hỏng chỗ nào?' },
-  diagAsk: { en: 'Tap the part you suspect', vi: 'Chạm vào linh kiện bạn nghi' },
-  diagRight: { en: 'Spot on! 🔍', vi: 'Chẩn đoán chuẩn! 🔍' },
-  diagWrong: { en: 'Hmm, not that one. Look again.', vi: 'Hừm, chưa phải. Thử lại nhé.' },
-  diagHint: { en: 'Hint: think about the symptom', vi: 'Gợi ý: nghĩ về triệu chứng' },
+  diagAsk: { en: 'One guess: tap the part you suspect', vi: 'Chỉ đoán 1 lần: chạm vào linh kiện bạn nghi' },
+  diagRight: { en: 'Spot on! Bonus +${0} 🔍', vi: 'Chẩn đoán chuẩn! Thưởng +${0} 🔍' },
+  diagWrong: { en: "Not quite. Let's find the cause together!", vi: 'Chưa đúng rồi. Cùng tháo máy ra tìm nguyên nhân nhé!' },
   diagSkip: { en: 'Skip', vi: 'Bỏ qua' },
   // settings: start over
   clearData: { en: '🗑 Clear data', vi: '🗑 Xóa dữ liệu' },

@@ -12,7 +12,7 @@ import type { PartDef, DrawState } from '../content/device';
 import { SCREW_R } from '../content/device';
 import { drawMat, drawBox, drawDish, drawScrewdriver, drawBrush, drawSponge, drawCash, drawNotepad, drawGear, drawBulbBtn, badge } from './desk';
 import { Minigame } from './minigames';
-import { Diagnosis, type DiagLevel } from './diagnosis';
+import { Diagnosis, diagBonus, type DiagLevel } from './diagnosis';
 import { Bench3D } from '../three/bench3d';
 
 type DragKind = 'part' | 'driver' | 'tool' | 'spin' | 'none';
@@ -23,6 +23,10 @@ const JOB_GLYPH: Partial<Record<PuzzleSpec['kind'], string>> = {
 type Phase = 'box' | 'apart' | 'repair' | 'clean' | 'rebuild' | 'done' | 'pack';
 
 interface Spot { x: number; y: number; r: number; a: number; col: string }
+
+type Pt = { x: number; y: number };
+/** What to do next, and where (see Bench.suggestion). */
+interface Hint { at: Pt; grab?: Pt; dest?: Pt; flip?: boolean; from?: Pt; to?: Pt; tap?: Pt; dbl?: boolean; msg: string }
 
 export interface RT {
   def: PartDef;
@@ -48,6 +52,8 @@ export interface RT {
 export interface BenchHost {
   money(): number;
   spend(n: number): void;
+  /** A bonus paid on the bench (a right first diagnosis). */
+  earn(n: number): void;
   tutorial: boolean;
   /** Quick Diagnosis after unboxing (null: straight to taking apart). */
   diagnose: DiagLevel | null;
@@ -271,8 +277,9 @@ export class Bench {
     if (this.g3.ok && this.phase !== 'box' && this.phase !== 'pack') this.g3.syncDevice();
     if (this.phase === 'done') {
       this.power = Math.min(1, this.power + dt * 1.5);
+      // (with WebGL the celebration is 3D and rides on the gadget: three/donefx.ts)
       const fxd = this.L.device.workFx;
-      if (fxd && Math.random() < dt * 6) {
+      if (fxd && !this.g3.ok && Math.random() < dt * 6) {
         const c = this.center;
         emit(fxd.kind === 'flash' ? 'flash' : fxd.kind, c.x + fxd.x * this.k, c.y + fxd.y * this.k, 1, {
           color: fxd.color, speed: 60, dir: fxd.dir, spread: 0.8, life: 1.2, size: fxd.kind === 'flash' ? 30 : 6,
@@ -358,9 +365,11 @@ export class Bench {
       const powerSfx: Record<string, () => void> = { dryer: sfx.heat, camera: sfx.shutter, handheld: sfx.sparkle, walkman: sfx.door };
       wait(0.4, () => powerSfx[this.L.device.id]?.());
       const c = this.center;
-      emit('ring', c.x, c.y, 1, { color: '#fff3c0', size: 60 * view.U, life: 0.8, speed: 0 });
-      emit('spark', c.x, c.y, 36, { color: ['#fff', '#ffe28a', '#c8f7ff'], speed: 320, size: 9, life: 1.2 });
-      emit('star', c.x, c.y, 14, { color: ['#ffd23f', '#fff'], speed: 260, size: 7, life: 1.1 });
+      if (!this.g3.ok) {
+        emit('ring', c.x, c.y, 1, { color: '#fff3c0', size: 60 * view.U, life: 0.8, speed: 0 });
+        emit('spark', c.x, c.y, 36, { color: ['#fff', '#ffe28a', '#c8f7ff'], speed: 320, size: 9, life: 1.2 });
+        emit('star', c.x, c.y, 14, { color: ['#ffd23f', '#fff'], speed: 260, size: 7, life: 1.1 });
+      }
       for (const p of this.parts) if (p.def.kind !== 'screw') p.pop = 1;
       wait(1.0, () => tween(this, { doneBtn: 1 }, 0.4, ease.outBack));
     }
@@ -453,9 +462,8 @@ export class Bench {
     c.restore();
   }
 
-  /** Screw-hole glows, power-on glow and halo, in screen space over the 3D gadget. */
+  /** Screw-hole glows in screen space over the 3D gadget (the switched-on show is 3D: three/donefx.ts). */
   deviceOverlays(c: C): void {
-    const cc = this.center;
     const k = this.k;
     if (this.phase === 'rebuild') {
       // empty screw holes, wherever they are on the turned gadget
@@ -471,30 +479,6 @@ export class Bench {
         c.fillStyle = 'rgba(0,0,0,0.55)';
         c.beginPath(); c.arc(0, 0, SCREW_R * 0.75, 0, Math.PI * 2); c.fill();
         c.restore();
-      }
-    }
-    if (this.power > 0) {
-      c.save();
-      c.translate(cc.x, cc.y);
-      c.rotate(-this.heading);
-      c.scale(this.flipK * k, k);
-      this.L.device.working(c, this.time, this.power);
-      c.restore();
-    }
-    if (this.phase === 'done') {
-      const r = Math.max(this.L.device.w, this.L.device.h) * k * 0.7;
-      c.save();
-      c.globalCompositeOperation = 'lighter';
-      const g = c.createRadialGradient(cc.x, cc.y, r * 0.2, cc.x, cc.y, r * 1.1);
-      g.addColorStop(0, `rgba(255,240,200,${0.16 * this.power})`);
-      g.addColorStop(1, 'rgba(255,240,200,0)');
-      c.fillStyle = g;
-      c.beginPath(); c.arc(cc.x, cc.y, r * 1.1, 0, Math.PI * 2); c.fill();
-      c.restore();
-      for (let i = 0; i < 8; i++) {
-        const a = this.time * 0.6 + (i / 8) * Math.PI * 2;
-        const rr2 = r * (0.85 + 0.1 * Math.sin(this.time * 2 + i));
-        sparkleShape(c, cc.x + Math.cos(a) * rr2, cc.y + Math.sin(a) * rr2 * 0.8, (5 + 3 * Math.sin(this.time * 4 + i)) * view.U, 'rgba(255,255,255,0.9)');
       }
     }
   }
@@ -880,54 +864,66 @@ export class Bench {
 
   // ---------------- hints ----------------
 
-  suggestion(): { from?: { x: number; y: number }; to?: { x: number; y: number }; tap?: { x: number; y: number }; dbl?: boolean; msg: string } | null {
+  /**
+   * The very next thing to do to get through the current step, and where:
+   * `at` = the spot to act on (the screw to turn, the part to take, the dirt left),
+   * `grab` = the tool to pick up for it, `dest` = where a dragged part goes,
+   * `flip` = nothing left on this face. `from`/`to`/`tap`/`msg` drive the
+   * first-two-customers tutorial hand.
+   */
+  suggestion(): Hint | null {
     const U = view.U;
     if (this.mini || this.diag || this.phase === 'box' || this.phase === 'done' || this.phase === 'pack') {
-      if (this.phase === 'box' && this.boxOpen === 0) return { tap: { x: this.center.x, y: this.center.y }, msg: t('tapBox') };
+      if (this.phase === 'box' && this.boxOpen === 0) return { at: this.center, tap: this.center, msg: t('tapBox') };
       return null;
     }
+    const handle = () => { const d = this.driverRest(); return { x: d.x + Math.cos(d.ang) * 70 * U, y: d.y + Math.sin(d.ang) * 70 * U }; };
     if (this.focus) {
       if (this.phase !== 'clean') return null;
-      const tool = this.focus.def.tool ?? 'brush';
+      const p = this.focus;
+      const tool = p.def.tool ?? 'brush';
       const r = this.toolRest();
       const f = this.focusPos();
-      return { from: r, to: { x: f.x + 30 * U, y: f.y }, msg: t(tool === 'brush' ? 'dragBrush' : 'dragSponge') };
+      // the dirtiest spot still left on the part being scrubbed
+      const left = (p.dirt?.[p.side] ?? []).filter((q) => q.a > 0.15).sort((a, b) => b.a * b.r - a.a * a.r)[0];
+      const at = left ? { x: p.x + left.x * p.sc * p.flipX, y: p.y + left.y * p.sc } : f;
+      return { at, grab: r, from: r, to: { x: at.x, y: at.y - 14 * U }, msg: t(tool === 'brush' ? 'dragBrush' : 'dragSponge') };
     }
     if (this.phase === 'apart') {
       const vis = this.parts.filter((p) => p.state === 'in' && this.visibleOnSide(p) && this.canRemove(p));
-      const sc = vis.find((p) => p.def.kind === 'screw');
-      const d = this.driverRest();
-      if (sc) return { from: { x: d.x, y: d.y }, to: this.home(sc), msg: t('dragScrewdriver') };
-      const part = vis.sort((a, b) => b.def.z - a.def.z)[0];
+      // a screw the driver can really turn now: nothing on top of it
+      const sc = vis.find((p) => p.def.kind === 'screw' && this.isTopAt(p));
+      if (sc) { const h = this.home(sc); return { at: h, grab: handle(), from: handle(), to: h, msg: t('dragScrewdriver') }; }
+      // a part that is free and on top where the finger would grab it
+      const free = vis.filter((p) => p.def.kind !== 'screw').sort((a, b) => b.def.z - a.def.z);
+      const part = free.find((p) => { const h = this.home(p); const top = this.hitDevice(h.x, h.y); return !top || top === p; }) ?? free[0];
       if (part) {
         const h = this.home(part);
         const s = this.slotPos(this.nextSlot());
-        return { from: h, to: { x: s.x, y: s.y }, msg: t('dragPart') };
+        return { at: h, dest: { x: s.x, y: s.y }, from: h, to: { x: s.x, y: s.y }, msg: t('dragPart') };
       }
-      if (this.L.device.hasBack) return { tap: this.center, dbl: true, msg: t('doubleTap') };
+      if (this.L.device.hasBack) return { at: this.center, flip: true, tap: this.center, dbl: true, msg: t('doubleTap') };
     }
     if (this.phase === 'repair') {
       const b = this.parts.find((p) => p.broken && !p.fixed);
-      if (b) { const s = this.trayPos(b); return { tap: { x: s.x, y: s.y }, msg: t('tapBroken') }; }
+      if (b) { const s = this.trayPos(b); return { at: s, tap: s, msg: t('tapBroken') }; }
     }
     if (this.phase === 'clean') {
       const b = this.parts.find((p) => p.dirt && p.state === 'out');
-      if (b) { const s = this.trayPos(b); return { tap: { x: s.x, y: s.y }, msg: t('tapDirty') }; }
+      if (b) { const s = this.trayPos(b); return { at: s, tap: s, msg: t('tapDirty') }; }
     }
     if (this.phase === 'rebuild') {
       const fit = this.parts.filter((p) => this.canFit(p));
       const part = fit.find((p) => p.def.kind !== 'screw');
-      if (part) { const s = this.trayPos(part); return { from: { x: s.x, y: s.y }, to: this.home(part), msg: t('dragBack') }; }
+      if (part) { const s = this.trayPos(part); const h = this.home(part); return { at: s, dest: h, from: s, to: h, msg: t('dragBack') }; }
       const sc = fit.find((p) => p.def.kind === 'screw' && this.visibleOnSide(p));
-      const d = this.driverRest();
-      if (sc) return { from: { x: d.x, y: d.y }, to: this.home(sc), msg: t('dragScrewdriver') };
-      if (fit.length && this.L.device.hasBack) return { tap: this.center, dbl: true, msg: t('doubleTap') };
+      if (sc) { const h = this.home(sc); return { at: h, grab: handle(), from: handle(), to: h, msg: t('dragScrewdriver') }; }
+      if (fit.length && this.L.device.hasBack) return { at: this.center, flip: true, tap: this.center, dbl: true, msg: t('doubleTap') };
     }
     return null;
   }
 
   drawHints(c: C): void {
-    const U = view.U;
     const wait0 = 1.6;
     const auto = this.host.tutorial && this.idle >= wait0;
     if ((!auto && this.hintT <= 0) || this.drag.kind !== 'none' || this.driver.busy || this.listShown) return;
@@ -936,6 +932,14 @@ export class Bench {
     const a = Math.max(auto ? Math.min(1, (this.idle - wait0) * 3) : 0, Math.min(1, this.hintT * 2));
     c.save();
     c.globalAlpha = a;
+    // the first two customers get the teaching hand; after that the bulb only marks the spot
+    if (this.host.tutorial) this.drawTutorial(c, s);
+    else this.drawTarget(c, s);
+    c.restore();
+  }
+
+  drawTutorial(c: C, s: Hint): void {
+    const U = view.U;
     const ph = (this.time * 0.7) % 1;
     if (s.from && s.to) {
       const k = ease.inOutSine(clamp((ph - 0.15) / 0.65, 0, 1));
@@ -957,7 +961,52 @@ export class Bench {
       }
       pill(c, clamp(s.tap.x, 110 * U, view.W - 110 * U), s.tap.y - 50 * U, s.msg, 14 * U, 1);
     }
+  }
+
+  /** The bulb's hint: a pulsing ring on the spot, a hand tapping it and what to do there. */
+  drawTarget(c: C, s: Hint): void {
+    const U = view.U;
+    const pulse = (this.time * 1.6) % 1;
+    const ring = (x: number, y: number, r: number, col: string, dashed = false) => {
+      c.save();
+      c.strokeStyle = col;
+      c.lineWidth = 3 * U;
+      if (dashed) { c.setLineDash([5 * U, 5 * U]); c.lineDashOffset = -this.time * 20; }
+      c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.stroke();
+      c.restore();
+    };
+    // where a dragged thing goes: a dashed ring and a faint path
+    if (s.dest) {
+      c.save();
+      c.globalAlpha *= 0.5;
+      c.strokeStyle = 'rgba(255,255,255,0.7)';
+      c.lineWidth = 2 * U;
+      c.setLineDash([4 * U, 8 * U]);
+      c.beginPath(); c.moveTo(s.at.x, s.at.y); c.lineTo(s.dest.x, s.dest.y); c.stroke();
+      c.restore();
+      ring(s.dest.x, s.dest.y, 20 * U, 'rgba(255,255,255,0.85)', true);
+    }
+    // the tool to pick up for it
+    if (s.grab) ring(s.grab.x, s.grab.y, 24 * U, 'rgba(255,226,120,0.75)', true);
+    // the spot itself
+    const { x, y } = s.at;
+    const r = 18 * U;
+    c.save();
+    c.globalAlpha *= 1 - pulse;
+    ring(x, y, r + pulse * 18 * U, '#ffd23f');
     c.restore();
+    ring(x, y, r, '#ffffff');
+    c.fillStyle = 'rgba(255,210,63,0.25)';
+    c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
+    if (s.flip) text(c, '↻', x, y + 1, 20 * U, '#ffffff', { font: 'bold', stroke: 'rgba(0,0,0,0.4)', strokeW: 3 * U });
+    // a hand tapping right on it (a double tap for a flip)
+    const ph = (this.time * 0.9) % 1;
+    const press = s.flip ? (ph < 0.1 || (ph > 0.2 && ph < 0.3) ? 1 : 0) : ph < 0.18 ? 1 : 0;
+    hand(c, x + 6 * U, y + 8 * U - (1 - press) * 6 * U, U * 1.15, press);
+    // and what to do there, above the spot (below it when the spot is up by the HUD)
+    const above = y - r - 34 * U;
+    const py = above > view.top + 150 * U ? above : y + r + 86 * U;
+    pill(c, clamp(x, 110 * U, view.W - 110 * U), py, s.msg, 14 * U, 1);
   }
 
   // ---------------- hint bulb ----------------
@@ -1313,6 +1362,12 @@ export class Bench {
                   // the culprit gives a little wiggle: that's the one to get to
                   const p = this.parts.find((q) => q.def.id === this.L.broken);
                   if (p && right) p.wig = 1;
+                  if (right) {
+                    // the bonus goes straight into the cash pill
+                    this.host.earn(diagBonus(this.L));
+                    sfx.cash();
+                    emit('star', 70 * view.U, view.top + 32 * view.U, 12, { color: ['#ffd23f', '#fff'], speed: 160, size: 6 });
+                  }
                   spinHint();
                 });
               } else spinHint();

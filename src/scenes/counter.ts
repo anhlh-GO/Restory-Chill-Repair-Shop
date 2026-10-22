@@ -16,6 +16,8 @@ import { counter3D } from '../three/counter3d';
 import { drawDaybreak } from './daybreak';
 import { drawWindowDecor, drawCounterDecor, drawShopSign } from './decor';
 import type { Gift } from '../content/meta';
+import { showcaseThumb } from '../three/showcase3d';
+import { TRY_DURATION, tryOutSounds, tryOutMotion, drawTryOut } from './handover';
 
 /** What the room wears right now. */
 export interface CounterLook {
@@ -69,6 +71,10 @@ export class Counter {
   blipT = 0;
   ding = 0;
   look: CounterLook;
+  /** The repaired gadget in the customer's hands: picture, 0..1 raised, try-out progress (-1: not trying). */
+  pic: HTMLCanvasElement | null = null;
+  hold = 0;
+  tryT = -1;
 
   constructor(level: Level, mode: 'arrive' | 'leave', host: CounterHost) {
     this.L = level;
@@ -102,7 +108,7 @@ export class Counter {
       this.custX = 0;
       this.ch.pose = 'idle';
       this.ch.expr = 'surprised';
-      wait(0.5, () => this.next());
+      wait(0.35, () => this.tryOut());
     }
   }
 
@@ -121,6 +127,10 @@ export class Counter {
     this.ch.time = this.time;
     this.ch.bounce = Math.max(0, this.ch.bounce - dt * 4);
     this.ding = Math.max(0, this.ding - dt * 5);
+    if (this.tryT >= 0) {
+      this.tryT += dt / TRY_DURATION;
+      if (this.tryT >= 1) this.endTry();
+    }
     if (this.dayT < 1) {
       const was = this.dayT;
       this.dayT = Math.min(1, this.dayT + dt / 3.6);
@@ -177,7 +187,73 @@ export class Counter {
     });
   }
 
+  /** The customer lifts the gadget and tries it before saying anything. */
+  tryOut(): void {
+    const { U } = this.layout;
+    this.pic = showcaseThumb(this.L.device, Math.round(this.heldSize() * Math.min(view.dpr, 2)));
+    sfx.lift();
+    tween(this, { hold: 1 }, 0.45, ease.outBack, () => {
+      this.tryT = 0;
+      this.ch.expr = 'surprised';
+      tryOutSounds(this.L.device.id);
+      emit('star', view.W / 2, this.heldY() - this.heldSize() * 0.4, 8, { color: ['#ffd23f', '#fff'], speed: 120, size: 6 * U });
+    });
+  }
+
+  endTry(): void {
+    this.tryT = -1;
+    this.ch.expr = 'happy';
+    this.ch.bounce = 1;
+    wait(0.2, () => this.next());
+  }
+
+  heldSize(): number { const { W, U } = this.layout; return Math.min(170 * U, W * 0.46); }
+  heldY(): number { const { yC } = this.layout; return yC - this.heldSize() * 0.62 - (1 - this.hold) * 50 * this.layout.U; }
+
+  /** The gadget held up in two hands; while being tried it moves and shows off. */
+  drawHeld(c: C): void {
+    const { W, U } = this.layout;
+    const s = this.heldSize();
+    const t = this.tryT < 0 ? (this.li >= 0 ? 1 : 0) : this.tryT;
+    const [mx, my, tilt] = this.tryT >= 0 ? tryOutMotion(this.L.device.id, this.tryT, this.time) : [0, Math.sin(this.time * 1.5) * 0.01, 0];
+    const x = W / 2 + mx * s, y = this.heldY() + my * s;
+    c.save();
+    c.globalAlpha = Math.min(1, this.hold * 1.4);
+    // the try-out show behind and around it
+    if (this.tryT >= 0) drawTryOut(c, this.L.device.id, x, y, s, t, this.time, U);
+    c.save();
+    c.translate(x, y);
+    c.rotate(tilt);
+    // the picture has room around the gadget: draw it a size up
+    const ps = s * 1.3;
+    if (this.pic) c.drawImage(this.pic, -ps / 2, -ps / 2, ps, ps);
+    c.restore();
+    // two hands holding it by the sides, arms coming up from below the counter
+    const look = this.L.look;
+    for (const side of [-1, 1]) {
+      const hx = x + side * s * 0.4, hy = y + s * 0.1 + my * s;
+      // sleeves: only above the counter top, they come up from behind it
+      c.save();
+      c.beginPath(); c.rect(0, 0, W, this.layout.yC - 3 * U); c.clip();
+      c.strokeStyle = look.top;
+      c.lineWidth = s * 0.13;
+      c.lineCap = 'round';
+      c.beginPath(); c.moveTo(hx + side * s * 0.16, hy + s * 0.7); c.quadraticCurveTo(hx + side * s * 0.14, hy + s * 0.25, hx + side * s * 0.02, hy + s * 0.08); c.stroke();
+      c.restore();
+      c.fillStyle = look.skin;
+      c.beginPath(); c.ellipse(hx, hy, s * 0.07, s * 0.085, side * 0.35, 0, Math.PI * 2); c.fill();
+      c.strokeStyle = 'rgba(60,30,20,0.35)'; c.lineWidth = 1.5 * U;
+      c.stroke();
+      // the thumb over the front
+      c.fillStyle = look.skin;
+      c.beginPath(); c.ellipse(hx - side * s * 0.05, hy - s * 0.05, s * 0.028, s * 0.045, -side * 0.6, 0, Math.PI * 2); c.fill(); c.stroke();
+    }
+    c.restore();
+  }
+
   showReceipt(): void {
+    // the gadget goes into their bag before they pay
+    tween(this, { hold: 0 }, 0.35, ease.inBack);
     sfx.whoosh();
     tween(this, { receipt: 1 }, 0.5, ease.outBack, () => {
       wait(0.5, () => {
@@ -267,6 +343,8 @@ export class Counter {
   down(x: number, y: number): void {
     // a tap skips the night
     if (this.dayT < 1) { this.endDayScene(); return; }
+    // a tap cuts the try-out short
+    if (this.tryT >= 0 && this.tryT < 0.95) { this.tryT = 0.95; return; }
     if (this.afterDay || this.dayCard > 0) return;
     const sign = this.shelfSign();
     if (Math.abs(x - sign.x) < sign.w / 2 + 6 && Math.abs(y - sign.y) < sign.h / 2 + 10) { this.host.openCollection(); return; }
@@ -375,6 +453,7 @@ export class Counter {
     else this.flatCounter(c, W, H, U, yC);
     drawCounterDecor(c, this.look, W, U, yC, this.time);
     drawShopSign(c, this.look, W, U, yC, this.time);
+    if (this.hold > 0.01) this.drawHeld(c);
 
     // cash only shows up while getting paid (the counter view stays clean, like the reference)
     if (this.receipt > 0.01 || this.coins.length) drawCash(c, 14 * U, view.top + 12 * U, this.host.money(), U, this.host.cashPulse());

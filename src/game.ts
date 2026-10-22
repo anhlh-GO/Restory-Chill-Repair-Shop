@@ -185,6 +185,7 @@ function goBench(): void {
   bench = new Bench(L, {
     money: () => cash,
     spend: (n) => { cash = Math.max(0, cash - n); saveCash(); pulse.v = 1; },
+    earn: (n) => { cash += n; levelEarned += n; saveCash(); pulse.v = 1; },
     // the first two gadgets teach; after that the bulb shows the way on request
     tutorial: level < 2,
     diagnose: diagLevelFor(level),

@@ -70,11 +70,25 @@ jobs:
           # portrait phone game
           sed -i 's/<activity /<activity android:screenOrientation="portrait" /' android/app/src/main/AndroidManifest.xml
           npx cap sync android
+      # Gradle's downloads, kept between runs: fewer trips to Maven Central (which rate-limits with 429)
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-capacitor-6.2.1-${{ runner.os }}
+          restore-keys: gradle-capacitor-6.2.1-
       - name: Gradle build
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          # a rate-limited download is worth a second (and third) try after a pause
+          for i in 1 2 3; do
+            ./gradlew assembleDebug --no-daemon && exit 0
+            echo "Gradle attempt $i failed, retrying after a pause"
+            sleep $((i * 45))
+          done
+          exit 1
       - name: Collect APK
         run: |
           mkdir -p out

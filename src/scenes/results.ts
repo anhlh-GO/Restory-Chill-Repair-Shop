@@ -17,7 +17,8 @@ export type ResultKind = 'next' | 'day' | 'chapter' | 'end';
 export interface ResultHost {
   onContinue(): void;
   onCollection(): void;
-  onShop(): void;
+  /** Open the renovation, on the suggested upgrade when there is one. */
+  onShop(id?: string): void;
 }
 
 export class Results {
@@ -30,6 +31,8 @@ export class Results {
   today: { L: Level; earned: number }[] = [];
   /** Offer the shop button (end of a day, once the shop has opened). */
   shop = false;
+  /** An upgrade within reach right now: the card offers it (Upgrade / Later). */
+  upgrade: { id: string; name: string; price: number } | null = null;
   memories: MemoryDef[] = [];
   pic: HTMLCanvasElement | null = null;
   press = -1;
@@ -39,9 +42,10 @@ export class Results {
     this.host = host;
   }
 
-  show(L: Level, earned: number, kind: ResultKind, today: { L: Level; earned: number }[], shop = false, memories: MemoryDef[] = []): void {
+  show(L: Level, earned: number, kind: ResultKind, today: { L: Level; earned: number }[], shop = false, memories: MemoryDef[] = [], upgrade: Results['upgrade'] = null): void {
     this.L = L;
-    this.shop = shop && kind !== 'next' && kind !== 'end';
+    this.upgrade = upgrade;
+    this.shop = !!upgrade || (shop && kind !== 'next' && kind !== 'end');
     this.memories = memories;
     this.earned = earned;
     this.kind = kind;
@@ -82,7 +86,7 @@ export class Results {
     ];
     if (this.shop) {
       out[0].y -= 52 * U;
-      out.splice(1, 0, { x: r.x, y: r.y + r.h / 2 - 90 * U, w: 200 * U, h: 40 * U, id: 'shop' });
+      out.splice(1, 0, { x: r.x, y: r.y + r.h / 2 - 90 * U, w: (this.upgrade ? 270 : 200) * U, h: 40 * U, id: 'shop' });
     }
     return out;
   }
@@ -169,7 +173,7 @@ export class Results {
     const main = this.kind === 'day' ? t('nextDayBtn') : this.kind === 'end' ? t('playAgain') : this.kind === 'chapter' ? t('chapterNext') : t('nextCustomerBtn');
     this.buttons().forEach((b, i) => {
       if (b.id === 'go') button(c, b.x, b.y, b.w, b.h, main, this.kind === 'end' ? '#4a90e2' : '#7ccf3c', this.press === i, 19 * U);
-      else if (b.id === 'shop') button(c, b.x, b.y, b.w, b.h, t('improveShop'), '#4a90e2', this.press === i, 16 * U);
+      else if (b.id === 'shop') button(c, b.x, b.y, b.w, b.h, this.upgrade ? t('renoCanUpgrade', this.upgrade.name, this.upgrade.price) : t('improveShop'), '#4a90e2', this.press === i, this.upgrade ? 13 * U : 16 * U);
       else button(c, b.x, b.y, b.w, b.h, t('collectionBtn'), '#d99a3f', this.press === i, 16 * U);
     });
     c.restore();
@@ -191,7 +195,7 @@ export class Results {
     const b = this.buttons()[i];
     if (Math.abs(x - b.x) > b.w / 2 + 8 || Math.abs(y - b.y) > b.h / 2 + 8) return true;
     if (b.id === 'go') this.host.onContinue();
-    else if (b.id === 'shop') this.host.onShop();
+    else if (b.id === 'shop') this.host.onShop(this.upgrade?.id);
     else this.host.onCollection();
     return true;
   }

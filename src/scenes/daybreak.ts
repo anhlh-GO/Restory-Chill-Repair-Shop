@@ -1,11 +1,14 @@
 // Between two days: the shop front seen from the street. Dusk, the shutter
-// rolls down and the neon sign hums; night with the moon; dawn, the calendar
-// flips to the new day; morning, the shutter goes up and the sign says OPEN.
-// `t` runs 0..1 over the whole sequence.
+// rolls down and the lamps come on; night; dawn: the calendar flips to the new
+// day; morning, the shutter rolls up on the lit workshop. The shop is the 3D storefront
+// as renovated so far (three/storefront3d.ts), dimmed for the night; without
+// WebGL the old flat drawing stands in. `t` runs 0..1 over the whole sequence.
 
 import { type C, rr, rrc, text, shade, rng } from '../core/draw';
 import { drawStreet, type Sky } from './city';
 import { t as tx } from '../core/i18n';
+import { storefront } from '../three/storefront3d';
+import { visualsDone } from '../content/renovation';
 
 const smooth = (a: number, b: number, x: number) => { const k = Math.min(1, Math.max(0, (x - a) / (b - a))); return k * k * (3 - 2 * k); };
 
@@ -17,6 +20,37 @@ function skies(t: number): [Sky, number][] {
 
 export function drawDaybreak(c: C, t: number, day: number, W: number, H: number, U: number, dpr: number, top: number): void {
   const night = smooth(0.12, 0.34, t) * (1 - smooth(0.52, 0.7, t));
+  const sf = storefront();
+  if (sf) {
+    // the sky over the 3D street: sunset, night, morning, cross-fading
+    const SKY: Partial<Record<Sky, [string, string]>> = { sunset: ['#f39a7a', '#f7d9a6'], night: ['#151c46', '#3b3f74'], morning: ['#7fc4f0', '#d6eef9'] };
+    for (const [sky, a] of skies(t)) {
+      const col = SKY[sky];
+      if (a < 0.01 || !col) continue;
+      const g = c.createLinearGradient(0, 0, 0, H * 0.6);
+      g.addColorStop(0, col[0]); g.addColorStop(1, col[1]);
+      c.save(); c.globalAlpha = a; c.fillStyle = g; c.fillRect(0, 0, W, H); c.restore();
+    }
+    // the shop as renovated so far, the whole screen tall
+    sf.focus(null);
+    sf.look = { ...sf.want };
+    // the shutter rolls down at dusk and up again in the morning
+    const down = smooth(0.02, 0.2, t) * (1 - smooth(0.74, 0.9, t));
+    sf.pose(visualsDone(), null, { open: 1 - down, night });
+    c.drawImage(sf.render(W, H, dpr, 1 / 60), 0, 0, W, H);
+    // the night falls over it
+    if (night > 0.01) {
+      c.fillStyle = `rgba(14,18,48,${0.5 * night})`;
+      c.fillRect(0, 0, W, H);
+    }
+  } else drawFlatFront(c, t, day, W, H, U, night, dpr);
+
+  // the calendar and the day title over it all
+  drawCalendar(c, t, day, W, H, U, top);
+}
+
+/** The shop front without WebGL. */
+function drawFlatFront(c: C, t: number, day: number, W: number, H: number, U: number, night: number, dpr: number): void {
   // the street behind, skies cross-fading
   const streetH = H * 0.7;
   for (const [sky, a] of skies(t)) {
@@ -26,30 +60,10 @@ export function drawDaybreak(c: C, t: number, day: number, W: number, H: number,
     drawStreet(c, 0, 0, W, streetH, sky, dpr, U);
     c.restore();
   }
-  // the sidewalk
   const sw = c.createLinearGradient(0, streetH, 0, H);
   sw.addColorStop(0, shade('#8a7f8c', -night * 0.55)); sw.addColorStop(1, shade('#5a5060', -night * 0.6));
   c.fillStyle = sw;
   c.fillRect(0, streetH, W, H - streetH);
-  c.fillStyle = `rgba(0,0,0,${0.25 + night * 0.2})`;
-  c.fillRect(0, streetH, W, 5 * U);
-  c.strokeStyle = `rgba(255,255,255,${0.12 - night * 0.06})`;
-  c.lineWidth = 1.5;
-  for (let x = -20; x < W; x += 46 * U) { c.beginPath(); c.moveTo(x, streetH + 6 * U); c.lineTo(x - 30 * U, H); c.stroke(); }
-
-  // street lamp, lit at night
-  const lx = W * 0.07, ly = streetH - 10 * U;
-  c.fillStyle = '#2e2a36';
-  c.fillRect(lx - 3 * U, ly - 190 * U, 6 * U, 200 * U);
-  c.beginPath(); rrc(c, lx + 10 * U, ly - 192 * U, 34 * U, 12 * U, 5 * U); c.fill();
-  if (night > 0.02) {
-    const g = c.createRadialGradient(lx + 18 * U, ly - 184 * U, 2, lx + 18 * U, ly - 120 * U, 120 * U);
-    g.addColorStop(0, `rgba(255,220,150,${0.75 * night})`); g.addColorStop(1, 'rgba(255,220,150,0)');
-    c.fillStyle = g;
-    c.beginPath(); c.moveTo(lx + 6 * U, ly - 182 * U); c.lineTo(lx + 30 * U, ly - 182 * U); c.lineTo(lx + 120 * U, ly + 10 * U); c.lineTo(lx - 80 * U, ly + 10 * U); c.closePath(); c.fill();
-  }
-
-  // ---- the shop front ----
   const fx0 = W * 0.12, fx1 = W * 0.88, fy0 = H * 0.3, fy1 = H * 0.84;
   const fw = fx1 - fx0;
   c.fillStyle = 'rgba(0,0,0,0.3)';
@@ -158,7 +172,9 @@ export function drawDaybreak(c: C, t: number, day: number, W: number, H: number,
     }
     c.restore();
   }
+}
 
+function drawCalendar(c: C, t: number, day: number, W: number, H: number, U: number, top: number): void {
   // the calendar: the page tears off at dawn
   const cx = W / 2, cy = top + 92 * U, cw = 116 * U, chh = 120 * U;
   const flip = smooth(0.56, 0.72, t);

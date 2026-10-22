@@ -1,13 +1,13 @@
-// The long game around the repairs: shop upgrades bought with the cash the
-// customers pay, albums that fill as gadgets get archived, and keepsakes the
-// regulars leave behind. Albums and keepsakes are read straight from the repair
-// record (chillfix_collection), so old saves light up with no migration; only
-// the shop tiers and the claimed rewards are stored here.
+// The long game around the repairs: the storefront renovation bought with the
+// cash customers pay (and the interior tiers it hands out), albums that fill as
+// gadgets get archived, and keepsakes the regulars leave behind. Albums and
+// keepsakes are read straight from the repair record (chillfix_collection), so
+// old saves light up with no migration; renovation, tiers and claims live here.
 
 import type { Txt } from '../core/i18n';
 import { LEVELS } from './story';
 
-// ---------- shop upgrades ----------
+// ---------- interior tiers (handed out as Renovation stage rewards) ----------
 
 export type Track = 'workbench' | 'counter' | 'shelf' | 'decor';
 export const TRACKS: Track[] = ['workbench', 'counter', 'shelf', 'decor'];
@@ -239,12 +239,16 @@ interface MetaSave {
   shop: Record<Track, number>;
   claimed: string[];
   seen: string[];
+  /** Renovation upgrades done (ids from content/renovation.ts). */
+  reno: string[];
+  /** The one-time move from the old Shop tiers to Renovation has run. */
+  renoMigrated: boolean;
 }
 
 const KEY = 'chillfix_meta';
 
 function fresh(): MetaSave {
-  return { shop: { workbench: 0, counter: 0, shelf: 0, decor: 0 }, claimed: [], seen: [] };
+  return { shop: { workbench: 0, counter: 0, shelf: 0, decor: 0 }, claimed: [], seen: [], reno: [], renoMigrated: true };
 }
 
 function load(): MetaSave {
@@ -258,6 +262,9 @@ function load(): MetaSave {
       }
       if (Array.isArray(v.claimed)) m.claimed = v.claimed.filter((x: unknown) => typeof x === 'string');
       if (Array.isArray(v.seen)) m.seen = v.seen.filter((x: unknown) => typeof x === 'string');
+      if (Array.isArray(v.reno)) m.reno = v.reno.filter((x: unknown) => typeof x === 'string');
+      // a save from before Renovation still has to move its bought tiers over
+      m.renoMigrated = v.renoMigrated === true;
     }
   } catch { /* storage blocked or broken: start fresh */ }
   return m;
@@ -280,40 +287,50 @@ export function resetMeta(): void {
 
 export const tierOf = (t: Track): number => meta.shop[t];
 
-/** How many customers have been served: the furthest repaired level + 1. */
-export function served(done: Record<number, unknown>): number {
-  let n = 0;
-  for (const k of Object.keys(done)) n = Math.max(n, Number(k) + 1);
-  return n;
-}
+// ---------- renovation ----------
 
-export type BuyCheck = 'ok' | 'owned' | 'locked' | 'prev' | 'cash';
-
-export function canBuy(t: Track, tier: number, cash: number, done: Record<number, unknown>): BuyCheck {
-  const have = meta.shop[t];
-  if (tier <= have) return 'owned';
-  if (served(done) < SHOP[t].after) return 'locked';
-  if (tier !== have + 1) return 'prev';
-  if (cash < SHOP[t].tiers[tier - 1].price) return 'cash';
-  return 'ok';
-}
+export const renoDone = (): ReadonlySet<string> => new Set(meta.reno);
 
 /**
- * Buy one tier: check, pay, grant, save, all or nothing. `pay` takes the money
- * and returns a refund function, used when the save fails.
+ * Record one renovation upgrade: pay, mark done, grant interior tiers (stage
+ * rewards), save. All or nothing: `pay` returns the refund used when saving fails.
  */
-export function buy(t: Track, tier: number, cash: number, done: Record<number, unknown>, pay: (n: number) => () => void): boolean {
-  if (canBuy(t, tier, cash, done) !== 'ok') return false;
-  const refund = pay(SHOP[t].tiers[tier - 1].price);
-  const next: MetaSave = { ...meta, shop: { ...meta.shop, [t]: tier } };
+export function completeReno(id: string, price: number, rewards: { track: Track; tier: number }[], pay: (n: number) => () => void): boolean {
+  if (meta.reno.includes(id)) return false;
+  const refund = price > 0 ? pay(price) : () => { /* free */ };
+  const shop = { ...meta.shop };
+  for (const r of rewards) shop[r.track] = Math.max(shop[r.track], r.tier);
+  const next: MetaSave = { ...meta, shop, reno: [...meta.reno, id] };
   if (!save(next)) { refund(); return false; }
   meta = next;
   return true;
 }
 
-/** Any track the player could buy into right now (for a gentle glow on the sign). */
-export function shopHasNews(cash: number, done: Record<number, unknown>): boolean {
-  return TRACKS.some((t) => meta.shop[t] < 3 && canBuy(t, meta.shop[t] + 1, cash, done) === 'ok');
+/** Debug panel / tests: set the renovation list directly (rewards are re-applied by the caller). */
+export function setReno(ids: string[], shop?: Record<Track, number>): void {
+  const next: MetaSave = { ...meta, reno: [...ids], shop: shop ?? meta.shop };
+  if (save(next)) meta = next;
+}
+
+/**
+ * Old saves: the Shop tiers bought with cash stay, and that cash comes back once,
+ * since Renovation now hands those tiers out as stage rewards. Returns the refund.
+ */
+export function migrateToReno(): number {
+  if (meta.renoMigrated) return 0;
+  let paid = 0;
+  for (const t of TRACKS) for (let i = 0; i < meta.shop[t]; i++) paid += SHOP[t].tiers[i].price;
+  const next: MetaSave = { ...meta, renoMigrated: true };
+  if (!save(next)) return 0;
+  meta = next;
+  return paid;
+}
+
+/** How many customers have been served: the furthest repaired level + 1. */
+export function served(done: Record<number, unknown>): number {
+  let n = 0;
+  for (const k of Object.keys(done)) n = Math.max(n, Number(k) + 1);
+  return n;
 }
 
 /** Devices that have been repaired at least once. */

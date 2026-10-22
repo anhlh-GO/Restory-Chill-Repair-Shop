@@ -1,7 +1,7 @@
 // Chill Fix Corner — a cozy repair-shop game. One level = one customer:
 // they tell their story at the counter, you take the gadget apart on the
 // bench, repair + clean it, rebuild it, and hand it back for payment.
-// Around that: shop upgrades bought with the earnings, a collection with
+// Around that: the storefront renovated with the earnings, a collection with
 // albums and keepsakes, and a second chapter after the street party.
 //
 // The `FalconGame` contract at the bottom is how the studio layer drives it.
@@ -23,9 +23,10 @@ import { Bench } from './scenes/bench';
 import { Settings } from './scenes/settings';
 import { Collection, markRepaired, loadCollection } from './scenes/collection';
 import { Results, type ResultKind } from './scenes/results';
-import { Shop } from './scenes/shop';
+import { Renovation } from './scenes/renovation';
+import { affordable, currentDay, byId } from './content/renovation';
 import { diagLevelFor } from './scenes/diagnosis';
-import { SHOP, TRACKS, served, takeNewMemories, tierOf, giftsOwned, shopHasNews, resetMeta } from './content/meta';
+import { served, takeNewMemories, tierOf, giftsOwned, resetMeta, migrateToReno } from './content/meta';
 import { t, tr } from './core/i18n';
 import { noteFrame } from './three/stage';
 
@@ -109,34 +110,49 @@ function clearData(): void {
   cash = 5;
   newMemories = [];
   memoryNews = [];
-  shopNews = false;
+  shopNews = null;
   startLevel(0);
   setTimeout(() => toast(t('clearDone'), view.W / 2, view.H * 0.3, 16 * view.U, 2.2), 600);
 }
 
 const collection = new Collection(LEVELS.slice(0, CHAPTER1));
 
-const shop = new Shop({
+const reno = new Renovation({
   money: () => cash,
   pay: (n) => {
     cash -= n; saveCash(); pulse.v = 1;
     return () => { cash += n; saveCash(); };
   },
+  give: (n) => { cash += n; saveCash(); pulse.v = 1; },
   cashPulse: () => pulse.v,
   done: () => loadCollection(),
-  onBought: () => counter?.refreshLook(),
+  onChanged: () => counter?.refreshLook(),
 });
 
-/** A track opens once enough customers have been served. */
-const shopOpen = () => served(loadCollection()) >= SHOP.workbench.after;
+// saves from before Renovation: the cash paid for the old Shop tiers comes back once
+{
+  const refund = migrateToReno();
+  if (refund > 0) {
+    cash += refund;
+    saveCash();
+    setTimeout(() => toast(t('renoRefund', refund), view.W / 2, view.H * 0.3, 15 * view.U, 3), 1500);
+  }
+}
+
+/** The renovation sign is always on the wall. */
+const shopOpen = () => true;
+/** The cheapest upgrade the player could buy right now (for the result card's nudge). */
+const nudge = () => affordable(currentDay(loadCollection()), cash);
 
 const results = new Results({
   onContinue: () => {
+    // the card offered an upgrade and the player went on: "later"
+    if (results.upgrade) reno.track('shop_upgrade_skip', byId(results.upgrade.id) ?? null, { player_day: currentDay(loadCollection()) });
     results.hide();
     startLevel(results.kind === 'end' ? 0 : level + 1);
   },
   onCollection: () => collection.show(level),
-  onShop: () => shop.show(),
+  onShop: (id) => reno.show(id),
 });
 
 function showResults(): void {
@@ -148,7 +164,9 @@ function showResults(): void {
   const today = LEVELS.map((x, i) => ({ L: x, i }))
     .filter(({ L: x, i }) => x.day === L.day && i <= level && done[i])
     .map(({ L: x, i }) => ({ L: x, earned: done[i].earned }));
-  results.show(L, levelEarned, kind, today, shopOpen(), newMemories);
+  const up = kind === 'end' ? null : nudge();
+  if (up) reno.track('shop_upgrade_available', up, { player_day: currentDay(done), cash_before: cash });
+  results.show(L, levelEarned, kind, today, shopOpen(), newMemories, up ? { id: up.id, name: tr(up.name), price: up.price } : null);
 }
 
 /** Keepsakes the last customer unlocked, announced once on the result card. */
@@ -161,7 +179,7 @@ function counterHost(mode: 'arrive' | 'leave') {
     cashPulse: () => pulse.v,
     openSettings: () => settings.show(),
     openCollection: () => collection.show(),
-    openShop: () => shop.show(),
+    openShop: () => reno.show(),
     look: () => counterLook(),
     showDay: mode === 'arrive' && (level === 0 || LEVELS[level - 1].day !== LEVELS[level].day),
     onDone: () => (mode === 'arrive' ? goBench() : finishLevel()),
@@ -172,8 +190,8 @@ function counterHost(mode: 'arrive' | 'leave') {
 function counterLook(): CounterLook {
   const done = loadCollection();
   return {
-    shopOpen: served(done) >= SHOP.workbench.after,
-    news: shopHasNews(cash, done),
+    shopOpen: true,
+    news: !!affordable(currentDay(done), cash),
     counter: tierOf('counter'),
     decor: tierOf('decor'),
     gifts: giftsOwned(done),
@@ -219,19 +237,18 @@ function finishLevel(): void {
   won = true;
   playing = false;
   scene = 'idle';
-  const before = served(loadCollection());
   markRepaired(level, levelEarned);
   newMemories = takeNewMemories(loadCollection());
-  const after = served(loadCollection());
-  // a shop track just opened: say so once, on the way to the next customer
-  if (TRACKS.some((k) => before < SHOP[k].after && after >= SHOP[k].after)) shopNews = true;
+  // an upgrade is within reach: said on the result card, or as a toast when the studio runs the flow
+  const up = nudge();
+  shopNews = up ? t('renoCanUpgrade', tr(up.name), up.price) : null;
   events.emit('win');
   // without a studio layer nobody else moves the game on: show our own card
   if (!studioRunsFlow()) showResults();
   else memoryNews = newMemories.map((m) => `${m.icon} ${t('newMemory', tr(m.name))}`);
 }
 
-let shopNews = false;
+let shopNews: string | null = null;
 /** Keepsake news for when the studio layer showed its own win popup instead of ours. */
 let memoryNews: string[] = [];
 
@@ -243,9 +260,9 @@ function startLevel(index: number): void {
   settings.open = 0;
   results.hide();
   collection.shown = false;
-  shop.shown = false;
-  const news = [...memoryNews, ...(shopNews ? [t('shopOpens')] : [])];
-  shopNews = false;
+  reno.shown = false;
+  const news = [...memoryNews, ...(shopNews && studioRunsFlow() ? [shopNews] : [])];
+  shopNews = null;
   memoryNews = [];
   news.forEach((s, i) => setTimeout(() => toast(s, view.W / 2, view.H * 0.3 + i * 40 * view.U, 15 * view.U, 2.8), 900));
   levelEarned = 0;
@@ -281,7 +298,7 @@ function frame(now: number): void {
   settings.update(dt);
   results.update(dt);
   collection.update(dt);
-  shop.update(dt);
+  reno.update(dt);
   render();
   requestAnimationFrame(frame);
 }
@@ -304,7 +321,7 @@ function render(): void {
   results.draw(ctx);
   settings.draw(ctx);
   collection.draw(ctx);
-  shop.draw(ctx);
+  reno.draw(ctx);
 }
 
 function drawIdle(): void {
@@ -328,7 +345,7 @@ canvas.addEventListener('pointerdown', (e) => {
   activePointer = e.pointerId;
   canvas.setPointerCapture?.(e.pointerId);
   const [x, y] = pos(e);
-  if (shop.down(x, y)) return;
+  if (reno.down(x, y)) return;
   if (collection.down(x, y)) return;
   if (settings.down(x, y)) return;
   if (results.down(x, y)) return;
@@ -347,7 +364,7 @@ const end = (e: PointerEvent) => {
   if (e.pointerId !== activePointer) return;
   activePointer = -1;
   const [x, y] = pos(e);
-  if (shop.up(x, y)) return;
+  if (reno.up(x, y)) return;
   if (collection.up(x, y)) return;
   if (results.up(x, y)) return;
   if (paused) return;
@@ -364,7 +381,7 @@ if (import.meta.env.DEV) {
     get scene() { return scene; },
     get results() { return results; },
     get collection() { return collection; },
-    get shop() { return shop; },
+    get reno() { return reno; },
     get pan() { return pan.active; },
     setCash: (n: number) => { cash = n; },
   };

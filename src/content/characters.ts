@@ -9,7 +9,7 @@ import { view } from '../core/view';
 
 export type HairStyle = 'spiky' | 'short' | 'bob' | 'long' | 'bun' | 'pony' | 'curly' | 'buzz' | 'bald' | 'braids';
 export type Outfit = 'hoodie' | 'tee' | 'shirt' | 'dress' | 'jacket' | 'cardigan' | 'apron';
-export type Pose = 'idle' | 'cheer' | 'peace' | 'think' | 'cross' | 'wave' | 'shy' | 'laugh' | 'rock';
+export type Pose = 'idle' | 'cheer' | 'peace' | 'think' | 'cross' | 'wave' | 'shy' | 'laugh' | 'rock' | 'hold';
 export type Expr = 'neutral' | 'happy' | 'sad' | 'surprised' | 'wink' | 'grin' | 'annoyed';
 
 export interface Look {
@@ -1208,6 +1208,15 @@ function hand(c: C, L: Look, B: Build, x: number, y: number, kind: HandKind, ang
 
 // ---------- the customer ----------
 
+/** Where the hands are in the 'hold' pose (bust units, waist at 0): ±x, y. */
+export function holdPoint(L: Look): { x: number; y: number } {
+  const B = build(L);
+  return { x: B.sw * 0.95, y: B.shoulderY + 58 };
+}
+
+/** The bust's breathing bob at a time, in bust units (to move what they hold with them). */
+export const breatheAt = (time: number): number => Math.sin(time * 2) * 0.7;
+
 /** Paint the whole bust at origin (waist on the counter line), in character units. */
 function renderBust(c: C, L: Look, st: CharState, talk: number): void {
   const B = build(L);
@@ -1289,6 +1298,15 @@ function renderBust(c: C, L: Look, st: CharState, talk: number): void {
       arm(c, L, B, sR, shY, sR + 2, sy + 88, -sw * 0.38, sy + 96);
       hand(c, L, B, sw * 0.42, sy + 80, 'fist', 1.4);
       hand(c, L, B, -sw * 0.42, sy + 92, 'fist', -1.4, -1);
+      break;
+    }
+    case 'hold': {
+      // both hands up in front of the chest, holding something between them
+      const h = holdPoint(L);
+      arm(c, L, B, sL, shY, sL + 2, sy + 104, -h.x, h.y + 6);
+      arm(c, L, B, sR, shY, sR - 2, sy + 104, h.x, h.y + 6);
+      hand(c, L, B, -h.x, h.y, 'fist', 1.25);
+      hand(c, L, B, h.x, h.y, 'fist', -1.25, -1);
       break;
     }
     case 'shy': {
